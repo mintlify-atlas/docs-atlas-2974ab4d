@@ -1,0 +1,147 @@
+---
+title: "scVIIntegration()"
+description: "Deep generative model integration for Seurat v5 via IntegrateLayers()"
+---
+
+`scVIIntegration()` is a Seurat v5-compatible integration method that trains an scVI variational autoencoder on single-cell count data and returns a latent representation that corrects for batch effects. It is designed to be passed to `IntegrateLayers()` rather than called directly.
+
+<Note>
+  `scVIIntegration` has `attr(x = scVIIntegration, which = 'Seurat.method') <- 'integration'` set, which registers it as a valid integration method for `Seurat::IntegrateLayers()`.
+</Note>
+
+## Syntax
+
+```r
+# Called via IntegrateLayers:
+obj <- IntegrateLayers(
+  object = obj,
+  method = scVIIntegration,
+  new.reduction = "integrated.scvi",
+  conda_env = "/path/to/conda/envs/scvi-env",
+  ...
+)
+
+# Direct call signature:
+scVIIntegration(
+  object,
+  features = NULL,
+  layers = "counts",
+  conda_env = NULL,
+  new.reduction = "integrated.dr",
+  ndims = 30,
+  nlayers = 2,
+  gene_likelihood = "nb",
+  max_epochs = NULL,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="StdAssay or SCTAssay" required>
+  A merged Seurat v5 assay with split layers (one per batch). Passed internally by `IntegrateLayers()`.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Features to include in the scVI model. If `NULL`, uses all features in the object.
+</ParamField>
+
+<ParamField path="layers" type="character" default="counts">
+  Layer(s) to integrate. scVI requires raw unnormalized count data. For standard workflows, use `"counts"`.
+</ParamField>
+
+<ParamField path="conda_env" type="character" default="NULL">
+  Path to the conda environment containing `scvi-tools`, `scanpy`, and `anndata`. Passed to `reticulate::use_condaenv(condaenv, required = TRUE)`. This parameter is required for the function to locate Python packages.
+</ParamField>
+
+<ParamField path="new.reduction" type="character" default="integrated.dr">
+  Name for the resulting DimReduc object in the Seurat object. Use `new.reduction` when calling via `IntegrateLayers()`.
+</ParamField>
+
+<ParamField path="ndims" type="integer" default="30">
+  Dimensionality of the scVI latent space (`n_latent` in scvi-tools).
+</ParamField>
+
+<ParamField path="nlayers" type="integer" default="2">
+  Number of hidden layers in the encoder and decoder neural networks (`n_layers` in scvi-tools).
+</ParamField>
+
+<ParamField path="gene_likelihood" type="character" default="nb">
+  Generative distribution for modelling gene expression counts. Options:
+  - `"nb"` — negative binomial (recommended for most scRNA-seq)
+  - `"zinb"` — zero-inflated negative binomial
+  - `"poisson"` — Poisson
+</ParamField>
+
+<ParamField path="max_epochs" type="integer" default="NULL">
+  Maximum number of training epochs. When `NULL`, scvi-tools uses its default size-based heuristic.
+</ParamField>
+
+## Returns
+
+A named list with a single `DimReduc` element keyed by `new.reduction`. The embeddings are the scVI latent representation (cells × `ndims`), with cell barcodes as row names. `IntegrateLayers()` unpacks this list and stores the reduction in the Seurat object.
+
+## How It Works
+
+1. Identifies batch membership per cell from split layer structure (or SCT model IDs for SCTransformed data)
+2. Joins count layers and builds an `AnnData` object in Python via `reticulate`
+3. Calls `scvi.model.SCVI.setup_anndata(adata, batch_key="batch")` to register batches
+4. Trains an `SCVI` model for `max_epochs` epochs
+5. Extracts the latent representation via `model.get_latent_representation()`
+6. Returns a named `DimReduc` list for `IntegrateLayers()`
+
+## Prerequisites
+
+```bash
+conda create -n scvi-env python=3.9
+conda activate scvi-env
+pip install scvi-tools
+```
+
+```r
+install.packages('reticulate')
+```
+
+## Examples
+
+```r
+library(Seurat)
+library(SeuratWrappers)
+library(reticulate)
+
+# Standard workflow
+obj <- SeuratData::LoadData("pbmcsca")
+obj[["RNA"]] <- split(obj[["RNA"]], f = obj$Method)
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+
+obj <- IntegrateLayers(
+  object = obj,
+  method = scVIIntegration,
+  new.reduction = "integrated.scvi",
+  conda_env = "../miniconda3/envs/scvi-env",
+  verbose = FALSE
+)
+
+obj <- FindNeighbors(obj, reduction = "integrated.scvi", dims = 1:30)
+obj <- FindClusters(obj)
+obj <- RunUMAP(obj, reduction = "integrated.scvi", dims = 1:30)
+
+# SCTransform workflow
+obj <- SCTransform(object = obj)
+obj <- IntegrateLayers(
+  object = obj,
+  method = scVIIntegration,
+  orig.reduction = "pca",
+  new.reduction = "integrated.scvi",
+  assay = "SCT",
+  conda_env = "../miniconda3/envs/scvi-env",
+  verbose = FALSE
+)
+```
+
+## See Also
+
+- [scVI method guide](/methods/scvi)

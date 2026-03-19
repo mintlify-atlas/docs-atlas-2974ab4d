@@ -1,0 +1,66 @@
+---
+title: "RunQuantileAlignSNF()"
+description: "Deprecated — calls RunQuantileNorm() internally"
+---
+
+<Warning>
+`RunQuantileAlignSNF()` is **deprecated**. It now redirects to `RunQuantileNorm()` internally. Use `RunQuantileNorm()` directly in all new code.
+</Warning>
+
+`RunQuantileAlignSNF()` was the original LIGER quantile alignment function. It is kept for backward compatibility but calls `RunQuantileNorm()` with a compatible subset of parameters. Not all parameters from the old API are forwarded.
+
+## Syntax
+
+```r
+RunQuantileAlignSNF(
+  object,
+  split.by = "orig.ident",
+  reduction = "iNMF_raw",
+  reduction.name = "iNMF",
+  reduction.key = "iNMF_",
+  recalc.snf = FALSE,
+  ref_dataset = NULL,
+  prune.thresh = 0.2,
+  min_cells = 2,
+  quantiles = 50,
+  nstart = 10,
+  resolution = 1,
+  center = FALSE,
+  id.number = NULL,
+  print.mod = FALSE,
+  print.align.summary = FALSE,
+  ...
+)
+```
+
+## Behavior
+
+Calling `RunQuantileAlignSNF()` emits a deprecation message and immediately delegates to `RunQuantileNorm()` with the following parameter mappings:
+
+| RunQuantileAlignSNF | RunQuantileNorm |
+|--------------------|-----------------|
+| `split.by` | `split.by` |
+| `reduction` | `reduction` |
+| `reduction.name` | `reduction.name` |
+| `reduction.key` | `reduction.key` |
+| `quantiles` | `quantiles` |
+
+Other parameters (`recalc.snf`, `prune.thresh`, `nstart`, `resolution`, `id.number`, `print.mod`, `print.align.summary`) are not forwarded.
+
+## Migration
+
+Replace all calls to `RunQuantileAlignSNF()` with `RunQuantileNorm()`:
+
+```r
+# Old (deprecated)
+object <- RunQuantileAlignSNF(object, split.by = "orig.ident")
+
+# New
+object <- RunQuantileNorm(object, split.by = "orig.ident")
+```
+
+## See Also
+
+- [`RunQuantileNorm()`](/api/run-quantile-norm) — Current quantile normalization function
+- [`RunSNF()`](/api/run-snf) — Also deprecated
+- [LIGER method guide](/methods/liger)

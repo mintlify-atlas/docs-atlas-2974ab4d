@@ -82,16 +82,21 @@
             "group": "Core Functions",
             "pages": [
               "api/run-alra",
+              "api/alra-choose-k-plot",
               "api/run-banksy",
               "api/run-cogaps",
               "api/run-fast-mnn",
               "api/run-glmpca",
               "api/run-miqc",
               "api/run-optimize-als",
+              "api/run-quantile-norm",
+              "api/run-quantile-align-snf",
+              "api/run-snf",
               "api/run-pacmap",
               "api/run-presto",
               "api/run-velocity",
-              "api/run-tricycle"
+              "api/run-tricycle",
+              "api/scvi-integration"
             ]
           },
           {

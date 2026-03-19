@@ -1,0 +1,48 @@
+---
+title: "RunSNF()"
+description: "Deprecated — use RunQuantileNorm() instead"
+---
+
+<Warning>
+`RunSNF()` is **deprecated**. The function body is disabled and it emits a `.Deprecated()` call redirecting users to `RunQuantileNorm()`. Do not use this function in new code.
+</Warning>
+
+`RunSNF()` was used to generate a shared factor neighborhood graph as part of the original LIGER integration pipeline. It has been fully replaced by `RunQuantileNorm()`, which combines quantile alignment and produces the final integrated embedding in a single step.
+
+## Syntax
+
+```r
+RunSNF(
+  object,
+  split.by = "orig.ident",
+  reduction = "iNMF_raw",
+  dims.use = NULL,
+  dist.use = "CR",
+  center = FALSE,
+  knn_k = 20,
+  k2 = 500,
+  small.clust.thresh = knn_k,
+  ...
+)
+```
+
+## Behavior
+
+Calling `RunSNF()` triggers `.Deprecated(new = 'RunQuantileNorm')` and does not perform any computation. The function returns invisibly after emitting the deprecation warning.
+
+## Migration
+
+```r
+# Old (deprecated — no longer functional)
+object <- RunSNF(object, split.by = "orig.ident")
+object <- RunQuantileAlignSNF(object, split.by = "orig.ident")
+
+# New (use this instead)
+object <- RunQuantileNorm(object, split.by = "orig.ident")
+```
+
+## See Also
+
+- [`RunQuantileNorm()`](/api/run-quantile-norm) — Current replacement function
+- [`RunQuantileAlignSNF()`](/api/run-quantile-align-snf) — Also deprecated
+- [LIGER method guide](/methods/liger)

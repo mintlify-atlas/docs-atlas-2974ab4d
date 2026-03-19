@@ -1,0 +1,119 @@
+---
+title: "RunQuantileNorm()"
+description: "Quantile normalize LIGER iNMF embeddings to align datasets"
+---
+
+`RunQuantileNorm()` aligns iNMF factor loadings across datasets using quantile normalization, producing the final integrated embedding. It wraps `rliger::quantile_norm()` and stores the normalized embeddings as a new DimReduc object in the Seurat object.
+
+This is the second step of the LIGER workflow, called after `RunOptimizeALS()`.
+
+## Syntax
+
+```r
+RunQuantileNorm(
+  object,
+  split.by = "orig.ident",
+  reduction = "iNMF_raw",
+  reduction.name = "iNMF",
+  reduction.key = "iNMF_",
+  quantiles = 50,
+  ref_dataset = NULL,
+  min_cells = 20,
+  knn_k = 20,
+  dims.use = NULL,
+  do.center = FALSE,
+  max_sample = 1000,
+  eps = 0.9,
+  refine.knn = TRUE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object after running `RunOptimizeALS()`.
+</ParamField>
+
+<ParamField path="split.by" type="character" default="orig.ident">
+  Metadata column identifying which dataset each cell belongs to. Must match the `split.by` used in `RunOptimizeALS()`.
+</ParamField>
+
+<ParamField path="reduction" type="character" default="iNMF_raw">
+  Name of the raw iNMF reduction from `RunOptimizeALS()` to normalize.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="iNMF">
+  Name for the resulting normalized DimReduc object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="iNMF_">
+  Prefix for the normalized iNMF dimension column names.
+</ParamField>
+
+<ParamField path="quantiles" type="integer" default="50">
+  Number of quantile bins used in the normalization procedure.
+</ParamField>
+
+<ParamField path="ref_dataset" type="character or integer" default="NULL">
+  Name or index of the reference dataset for alignment. Defaults to the dataset with the most cells.
+</ParamField>
+
+<ParamField path="min_cells" type="integer" default="20">
+  Minimum number of cells required in a cluster for it to be used in quantile alignment.
+</ParamField>
+
+<ParamField path="knn_k" type="integer" default="20">
+  Number of nearest neighbors used in the kNN graph for quantile normalization.
+</ParamField>
+
+<ParamField path="dims.use" type="integer vector" default="NULL">
+  Which iNMF dimensions to use. Defaults to all dimensions.
+</ParamField>
+
+<ParamField path="do.center" type="logical" default="FALSE">
+  Whether to center embeddings before normalization. Should match the value used in `ScaleData()` (always `FALSE` for LIGER).
+</ParamField>
+
+<ParamField path="max_sample" type="integer" default="1000">
+  Maximum number of cells to sample per dataset when computing quantiles.
+</ParamField>
+
+<ParamField path="eps" type="numeric" default="0.9">
+  Epsilon parameter for approximate nearest neighbor search precision.
+</ParamField>
+
+<ParamField path="refine.knn" type="logical" default="TRUE">
+  Whether to refine the kNN graph after initial construction.
+</ParamField>
+
+## Returns
+
+A Seurat object with:
+- A new DimReduc under `reduction.name` (default: `iNMF`) containing the quantile-normalized embeddings
+- Additional metadata columns from the quantile normalization output stored as cell-level metadata
+- Active identities (`Idents()`) set to the cluster assignments from quantile normalization
+
+## Examples
+
+```r
+library(SeuratWrappers)
+install.packages('rliger')
+
+# Full LIGER workflow
+object <- NormalizeData(object)
+object <- FindVariableFeatures(object)
+object <- ScaleData(object, split.by = "orig.ident", do.center = FALSE)
+object <- RunOptimizeALS(object, k = 20, split.by = "orig.ident")
+object <- RunQuantileNorm(object, split.by = "orig.ident")
+
+# Downstream analysis on normalized iNMF embedding
+object <- FindNeighbors(object, reduction = "iNMF", dims = 1:ncol(Embeddings(object, "iNMF")))
+object <- FindClusters(object)
+object <- RunUMAP(object, reduction = "iNMF", dims = 1:ncol(Embeddings(object, "iNMF")))
+```
+
+## See Also
+
+- [`RunOptimizeALS()`](/api/run-optimize-als) — Run iNMF factorization (first step)
+- [LIGER method guide](/methods/liger)

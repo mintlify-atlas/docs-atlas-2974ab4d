@@ -1,0 +1,69 @@
+---
+title: "ALRAChooseKPlot()"
+description: "Visualize singular value spectrum and p-values to choose rank k for ALRA imputation"
+---
+
+`ALRAChooseKPlot()` produces three diagnostic plots used to select the rank `k` for ALRA imputation. It requires `RunALRA()` to have been called first with `k.only = TRUE` to compute the singular value decomposition and store it in the object's tool slot.
+
+## Syntax
+
+```r
+ALRAChooseKPlot(
+  object,
+  start = 0,
+  combine = TRUE
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object on which `RunALRA(object, k.only = TRUE)` has been run. The function reads singular values, spacings, and p-values from `Tool(object, slot = 'RunALRA')`.
+</ParamField>
+
+<ParamField path="start" type="numeric" default="0">
+  Starting index for the singular value spacing and p-value plots. Defaults to `floor(k / 2)` where `k` is the automatically selected rank. Use a smaller value to see more of the spectrum.
+</ParamField>
+
+<ParamField path="combine" type="logical" default="TRUE">
+  If `TRUE`, combines all three plots into a single figure using `CombinePlots()`. If `FALSE`, returns a named list of three separate ggplot objects: `spectrum`, `spacings`, and `pvals`.
+</ParamField>
+
+## Returns
+
+When `combine = TRUE` (default): a combined ggplot object showing all three panels side by side.
+
+When `combine = FALSE`: a named list with three ggplot objects:
+- `spectrum` — singular values s_i vs index, with a vertical line at the selected k
+- `spacings` — consecutive differences s_i - s_{i-1}, with a vertical line at k+1
+- `pvals` — p-values for each spacing, with a vertical line at k+1
+
+## Examples
+
+```r
+library(SeuratWrappers)
+
+# Step 1: Compute k only (no imputation yet)
+pbmc_alra <- RunALRA(pbmc_small, k.only = TRUE)
+
+# Step 2: Visualize the singular value spectrum
+ggouts <- ALRAChooseKPlot(pbmc_alra)
+# Combined plot — all three panels
+ggouts
+
+# Or access individual panels
+ggouts_list <- ALRAChooseKPlot(pbmc_alra, combine = FALSE)
+ggouts_list$spectrum
+ggouts_list$pvals
+
+# Or use gridExtra for layout control
+do.call(gridExtra::grid.arrange, c(ALRAChooseKPlot(pbmc_alra, combine = FALSE), nrow = 1))
+
+# Step 3: Once satisfied with k, run full ALRA imputation
+pbmc_alra <- RunALRA(pbmc_alra)
+```
+
+## See Also
+
+- [`RunALRA()`](/api/run-alra) — Run ALRA imputation
+- [ALRA method guide](/methods/alra)
