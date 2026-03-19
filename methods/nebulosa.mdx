@@ -1,0 +1,173 @@
+---
+title: "Nebulosa Gene Expression Visualization"
+description: "Kernel density estimation for visualizing gene expression across single cells, recovering dropout signal and revealing co-expression patterns."
+---
+
+## Overview
+
+Nebulosa is an R package that visualizes single-cell data using kernel density estimation (KDE). Standard scatter plots of gene expression can be misleading in single-cell data due to dropout — genes that are expressed but recorded as zero. Nebulosa recovers this signal by incorporating cell-to-cell similarity in its density estimates, producing smooth, interpretable expression maps.
+
+Key advantages over raw `FeaturePlot()`:
+
+- Recovers signal from dropped-out features by pooling information from similar cells
+- Removes spurious "random" expression in areas not supported by many cells
+- Enables joint density visualization to identify co-expressing cell populations
+
+<Note>
+**Citation**: Jose Alquicira-Hernandez and Joseph E. Powell. *Nebulosa recovers single cell gene expression signals by kernel density estimation.* doi: [10.18129/B9.bioc.Nebulosa](https://doi.org/10.18129/B9.bioc.Nebulosa)
+
+Source: [powellgenomicslab/Nebulosa](https://github.com/powellgenomicslab/Nebulosa)
+</Note>
+
+## Installation
+
+```bash
+remotes::install_github('powellgenomicslab/Nebulosa')
+```
+
+## Key function
+
+`plot_density()` is the main function from the Nebulosa package. Its interface resembles Seurat's `FeaturePlot()`, making it easy to drop into existing Seurat workflows.
+
+## Complete workflow
+
+<Steps>
+  <Step title="Load libraries">
+    ```r
+    library(Nebulosa)
+    library(Seurat)
+    library(BiocFileCache)
+    ```
+  </Step>
+
+  <Step title="Load and preprocess data">
+    This example uses a 3k PBMC dataset from 10x Genomics:
+
+    ```r
+    bfc <- BiocFileCache(ask = FALSE)
+    data_file <- bfcrpath(bfc,
+      file.path("https://s3-us-west-2.amazonaws.com/10x.files/samples/cell",
+                "pbmc3k", "pbmc3k_filtered_gene_bc_matrices.tar.gz")
+    )
+    untar(data_file, exdir = tempdir())
+
+    data <- Read10X(
+      data.dir = file.path(tempdir(), "filtered_gene_bc_matrices", "hg19")
+    )
+
+    pbmc <- CreateSeuratObject(
+      counts = data,
+      project = "pbmc3k",
+      min.cells = 3,
+      min.features = 200
+    )
+    ```
+  </Step>
+
+  <Step title="Filter low-quality cells">
+    ```r
+    pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+    pbmc <- subset(pbmc, subset = nFeature_RNA < 2500 & percent.mt < 5)
+    ```
+  </Step>
+
+  <Step title="Normalize and reduce dimensions">
+    Nebulosa works on any 2D embedding. Here, use SCTransform followed by PCA and UMAP:
+
+    ```r
+    pbmc <- SCTransform(pbmc, verbose = FALSE)
+    pbmc <- RunPCA(pbmc)
+    pbmc <- RunUMAP(pbmc, dims = 1:30)
+    ```
+  </Step>
+
+  <Step title="Cluster">
+    ```r
+    pbmc <- FindNeighbors(pbmc, dims = 1:30)
+    pbmc <- FindClusters(pbmc)
+    ```
+  </Step>
+
+  <Step title="Visualize with Nebulosa">
+    Plot the kernel density estimate for a single gene:
+
+    ```r
+    plot_density(pbmc, "CD4")
+    ```
+
+    Compare with Seurat's standard feature plot:
+
+    ```r
+    # Standard Seurat plot
+    FeaturePlot(pbmc, "CD4")
+    FeaturePlot(pbmc, "CD4", order = TRUE)
+
+    # Nebulosa density plot — smoother, recovers dropout
+    plot_density(pbmc, "CD4")
+    ```
+
+    Nebulosa removes the "random" scattered expression of CD4 in areas where it is not biologically supported, while still highlighting CD4+ T cells and myeloid cells.
+  </Step>
+</Steps>
+
+## Multi-feature visualization
+
+Nebulosa supports plotting multiple features simultaneously and computing joint densities to identify co-expressing populations.
+
+### Individual densities for multiple genes
+
+```r
+# Returns individual density plots for each gene
+p <- plot_density(pbmc, c("CD8A", "CCR7"))
+p + plot_layout(ncol = 1)
+```
+
+### Joint density
+
+Use `joint = TRUE` to multiply the per-gene densities into a single joint density plot. This highlights cells that co-express all queried genes:
+
+```r
+# Joint density of CD8A and CCR7 — identifies Naive CD8+ T cells
+p <- plot_density(pbmc, c("CD8A", "CCR7"), joint = TRUE)
+p + plot_layout(ncol = 1)
+```
+
+### Accessing individual plots
+
+Set `combine = FALSE` to get a list of ggplot objects. The last element is always the joint density:
+
+```r
+p_list <- plot_density(pbmc, c("CD8A", "CCR7"), joint = TRUE, combine = FALSE)
+
+# Individual gene densities
+p_list[[1]]  # CD8A
+p_list[[2]]  # CCR7
+
+# Joint density
+p_list[[length(p_list)]]
+```
+
+### Identifying cell populations with joint density
+
+```r
+# Naive CD4+ T cells: CD4 and CCR7 co-expression
+p4 <- plot_density(pbmc, c("CD4", "CCR7"), joint = TRUE)
+p4 + plot_layout(ncol = 1)
+
+# Compare joint density against cluster labels
+p4[[3]] / DimPlot(pbmc, label = TRUE, repel = TRUE)
+```
+
+## When to use Nebulosa
+
+Nebulosa is most valuable for:
+
+- **Dropped-out genes** — genes with high dropout rates where raw expression plots are sparse and hard to interpret
+- **Co-expression analysis** — identifying populations that express multiple markers simultaneously
+- **Communication in presentations** — smoother density maps are often clearer for figures and talks
+
+For genes with strong, high-coverage expression, standard `FeaturePlot()` may be equally informative. Use Nebulosa alongside core Seurat visualization methods to draw more informed conclusions.
+
+## Additional resources
+
+- [Nebulosa GitHub repository](https://github.com/powellgenomicslab/Nebulosa)

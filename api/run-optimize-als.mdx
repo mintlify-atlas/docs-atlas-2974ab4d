@@ -1,0 +1,124 @@
+---
+title: "RunOptimizeALS()"
+description: "Run LIGER integrative NMF via optimizeALS on a Seurat object"
+---
+
+`RunOptimizeALS()` wraps the LIGER `optimizeALS` algorithm to perform integrative non-negative matrix factorization (iNMF) on a merged Seurat object. Each dataset's cells share a common factor matrix W while having dataset-specific matrices H and V.
+
+## Syntax
+
+```r
+RunOptimizeALS(
+  object,
+  k,
+  assay = NULL,
+  split.by = "orig.ident",
+  lambda = 5,
+  thresh = 1e-6,
+  max.iters = 30,
+  reduction.name = "iNMF_raw",
+  reduction.key = "riNMF_",
+  nrep = 1,
+  H.init = NULL,
+  W.init = NULL,
+  V.init = NULL,
+  rand.seed = 1,
+  print.obj = FALSE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A merged Seurat object containing cells from multiple datasets.
+</ParamField>
+
+<ParamField path="k" type="integer" required>
+  Number of factors (latent dimensions) to compute.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="split.by" type="character" default="orig.ident">
+  Metadata column used to split cells into per-dataset subsets.
+</ParamField>
+
+<ParamField path="lambda" type="numeric" default="5">
+  Regularization parameter. Larger values increase dataset-specific penalty.
+</ParamField>
+
+<ParamField path="thresh" type="numeric" default="1e-6">
+  Convergence threshold for the ALS objective.
+</ParamField>
+
+<ParamField path="max.iters" type="integer" default="30">
+  Maximum number of ALS iterations.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="iNMF_raw">
+  Name for the resulting DimReduc object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="riNMF_">
+  Prefix for the iNMF embedding column names.
+</ParamField>
+
+<ParamField path="nrep" type="integer" default="1">
+  Number of restarts. The best factorization is kept.
+</ParamField>
+
+<ParamField path="H.init" type="matrix" default="NULL">
+  Initial value for the H (cell factor) matrices.
+</ParamField>
+
+<ParamField path="W.init" type="matrix" default="NULL">
+  Initial value for the W (shared gene factor) matrix.
+</ParamField>
+
+<ParamField path="V.init" type="matrix" default="NULL">
+  Initial value for the V (dataset-specific gene factor) matrices.
+</ParamField>
+
+<ParamField path="rand.seed" type="integer" default="1">
+  Random seed for reproducibility.
+</ParamField>
+
+<ParamField path="print.obj" type="logical" default="FALSE">
+  Print the objective value at each iteration.
+</ParamField>
+
+## Returns
+
+A Seurat object with:
+- A DimReduc under `reduction.name` containing iNMF cell embeddings and feature loadings
+- Per-dataset feature loading matrices stored in the `Tool` slot (accessible via `Tool(object)`)
+
+## Examples
+
+```r
+library(SeuratWrappers)
+install.packages("rliger")
+
+# Preprocess: normalize and scale (without centering)
+object <- NormalizeData(object)
+object <- FindVariableFeatures(object)
+object <- ScaleData(object, split.by = "orig.ident", do.center = FALSE)
+
+# Run iNMF factorization
+object <- RunOptimizeALS(object, k = 20, split.by = "orig.ident")
+
+# Quantile normalize
+object <- RunQuantileNorm(object, split.by = "orig.ident")
+
+# Cluster and visualize
+object <- FindNeighbors(object, reduction = "iNMF", dims = 1:ncol(Embeddings(object, "iNMF")))
+object <- FindClusters(object)
+object <- RunUMAP(object, reduction = "iNMF", dims = 1:ncol(Embeddings(object, "iNMF")))
+```
+
+## See Also
+
+- [LIGER method guide](/methods/liger)

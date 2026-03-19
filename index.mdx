@@ -1,97 +1,87 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "SeuratWrappers"
+description: "Community-provided methods and extensions for Seurat — enabling cutting-edge single-cell analysis workflows"
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/introduction">
+    Learn what SeuratWrappers is and how it extends Seurat for single-cell genomics.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Install SeuratWrappers and its method-specific dependencies.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="API Reference" icon="code" href="/api/run-alra">
+    Explore the full function reference with parameters and return types.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="GitHub" icon="github" href="https://github.com/satijalab/seurat-wrappers">
+    View source code, report issues, and contribute new methods.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What is SeuratWrappers?
 
-Everything you need to create world-class documentation.
+SeuratWrappers is a collection of community-provided methods and extensions for [Seurat](https://satijalab.org/seurat/), curated by the Satija Lab at the New York Genome Center. These integrations provide functionality not yet available in core Seurat and can be updated more frequently, enabling the community to rapidly incorporate new single-cell analysis methods.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+Each wrapper integrates a published algorithm into the Seurat ecosystem — accepting Seurat objects as input, running the underlying method, and returning results in a Seurat-compatible format.
 
-## Need inspiration?
+## Available Methods
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Harmony" icon="layer-group" href="/methods/harmony">
+    Fast, scalable dataset integration via iterative correction of PCA embeddings.
+  </Card>
+  <Card title="LIGER" icon="link" href="/methods/liger">
+    Integrative non-negative matrix factorization for single-cell data.
+  </Card>
+  <Card title="Conos" icon="diagram-project" href="/methods/conos">
+    Joint graph-based analysis for mapping between datasets.
+  </Card>
+  <Card title="fastMNN" icon="bolt" href="/methods/fast-mnn">
+    Mutual nearest-neighbor batch correction via Bioconductor batchelor.
+  </Card>
+  <Card title="scVI" icon="brain" href="/methods/scvi">
+    Deep generative model for single-cell data integration.
+  </Card>
+  <Card title="Monocle 3" icon="route" href="/methods/monocle3">
+    Pseudotime trajectory inference and cell ordering.
+  </Card>
+  <Card title="RNA Velocity" icon="arrow-trend-up" href="/methods/velocity">
+    Estimate transcriptional dynamics using spliced/unspliced RNA ratios.
+  </Card>
+  <Card title="ALRA" icon="wand-magic-sparkles" href="/methods/alra">
+    Zero-preserving imputation using low-rank approximation.
+  </Card>
+  <Card title="BANKSY" icon="map-location-dot" href="/methods/banksy">
+    Spatial transcriptomics clustering incorporating neighborhood context.
+  </Card>
+  <Card title="miQC" icon="shield-check" href="/methods/miqc">
+    Probabilistic quality control for single-cell datasets.
+  </Card>
+  <Card title="Presto" icon="gauge-high" href="/methods/presto">
+    Fast Wilcoxon rank-sum test for differential expression.
+  </Card>
+  <Card title="GLM-PCA" icon="chart-scatter" href="/methods/glmpca">
+    Generalized linear model PCA for count data.
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+```r
+# Install SeuratWrappers
+remotes::install_github("satijalab/seurat-wrappers")
+library(SeuratWrappers)
+
+# Integrate multiple datasets with Harmony
+obj <- RunHarmony(object = merged_seurat, group.by.vars = "orig.ident")
+
+# Impute dropout values with ALRA
+obj <- RunALRA(object = obj)
+
+# Infer trajectories with Monocle 3
+cds <- as.cell_data_set(obj)
+```
+
+## Contributing
+
+SeuratWrappers is community-driven. If you have developed a method that works with Seurat objects, consider contributing it to the collection. See the [contribution guide](https://github.com/satijalab/seurat.wrappers/wiki) on GitHub for guidelines.

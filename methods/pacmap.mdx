@@ -1,0 +1,170 @@
+---
+title: "PaCMAP Dimensionality Reduction"
+description: "Pairwise Controlled Manifold Approximation for robust, trustworthy visualization of high-dimensional single-cell data."
+---
+
+PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reduction method designed to produce visualizations that faithfully preserve both local and global structure. It constructs three types of point pairs — neighbor pairs, mid-near pairs, and further pairs — and optimizes a low-dimensional embedding by balancing attractive and repulsive forces among them.
+
+## References
+
+Wang, Y., Huang, H., Rudin, C., & Shaposhnik, Y. (2021). *Understanding how dimension reduction tools work: an empirical approach to deciphering t-SNE, UMAP, TriMAP, and PaCMAP for data visualization.* Journal of Machine Learning Research, 22(201), 1–73. https://doi.org/10.48550/arXiv.2012.04456
+
+Huang, H., Wang, Y., Rudin, C., & Browne, E. P. (2022). *Towards a comprehensive evaluation of dimension reduction methods for transcriptomic data visualization.* Communications Biology. https://doi.org/10.1038/s42003-022-03628-x
+
+Source: [YingfanWang/PaCMAP](https://github.com/YingfanWang/PaCMAP)
+
+## Installation
+
+PaCMAP is implemented in Python and called from R via `reticulate`. You must set up a Python environment with the `pacmap` package before using `RunPaCMAP()`.
+
+<Note>
+  We strongly recommend using [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.anaconda.com/miniconda/miniconda-install/) for Python environment management. This ensures a clean, isolated environment and simplifies the connection between R and Python.
+</Note>
+
+<Steps>
+  <Step title="Create a conda environment with PaCMAP">
+    ```bash
+    conda create -n "pacmap" python=3.12
+    conda activate pacmap
+    conda install -y conda-forge::pacmap
+    ```
+  </Step>
+  <Step title="Install R dependencies">
+    ```r
+    # Install reticulate if not already available
+    install.packages("reticulate")
+    ```
+  </Step>
+  <Step title="Connect R to the conda environment">
+    Run this at the start of each R session before calling `RunPaCMAP()`.
+
+    ```r
+    reticulate::use_condaenv(condaenv = "pacmap", conda = "auto")
+    ```
+
+    If your Conda installation is in a non-default directory, replace `"auto"` with the path to your conda executable.
+  </Step>
+</Steps>
+
+## Key function
+
+`RunPaCMAP()` — Runs PaCMAP on a Seurat object and stores the embedding as a `DimReduc` object. Input can be either a set of features (expression values) or existing reduction dimensions (e.g., PCA components).
+
+## Example
+
+### Run PaCMAP from variable features
+
+```r
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+
+reticulate::use_condaenv(condaenv = "pacmap", conda = "auto")
+
+InstallData("pbmc3k")
+pbmc3k.final <- LoadData("pbmc3k", type = "pbmc3k.final")
+
+# Prepare the object
+pbmc3k.final <- UpdateSeuratObject(pbmc3k.final)
+pbmc3k.final <- FindVariableFeatures(pbmc3k.final)
+
+# Run PaCMAP using variable features as input
+pbmc3k.final <- RunPaCMAP(
+  object   = pbmc3k.final,
+  features = VariableFeatures(pbmc3k.final)
+)
+
+# Visualize
+DimPlot(object = pbmc3k.final, reduction = "pacmap")
+```
+
+### Run PaCMAP from existing PCA dimensions
+
+You can also pass specific PCA dimensions instead of raw features:
+
+```r
+pbmc3k.final <- RunPaCMAP(object = pbmc3k.final, dims = 2:5)
+DimPlot(object = pbmc3k.final, reduction = "pacmap")
+```
+
+### Visualize gene expression on the PaCMAP embedding
+
+```r
+pbmc3k.final <- NormalizeData(pbmc3k.final, verbose = FALSE)
+features.plot <- c("CD3D", "MS4A1", "CD8A", "GZMK", "GZMB", "FCGR3A")
+FeaturePlot(pbmc3k.final, features.plot, ncol = 2, reduction = "pacmap")
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat">
+  A Seurat object to run PaCMAP on.
+</ParamField>
+
+<ParamField path="reduction" type="character" default='pca'>
+  Name of the dimensional reduction to use as input when `dims` is specified.
+</ParamField>
+
+<ParamField path="dims" type="integer vector" default="NULL">
+  Dimensions of the specified `reduction` to use as input. Specify either `dims` or `features`, not both.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Features (genes) to use as input. Specify either `features` or `dims`, not both.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to pull feature data from when `features` is specified. Defaults to the default assay.
+</ParamField>
+
+<ParamField path="layer" type="character" default='data'>
+  Layer within the assay to use when `features` is specified.
+</ParamField>
+
+<ParamField path="n_components" type="integer" default="2">
+  Number of PaCMAP components to compute.
+</ParamField>
+
+<ParamField path="n.neighbors" type="integer" default="NULL">
+  Number of neighbors in the k-nearest neighbor graph. Defaults to 10 for datasets with fewer than 10,000 cells; for larger datasets defaults to `10 + 15 * (log10(n) - 4)`.
+</ParamField>
+
+<ParamField path="MN_ratio" type="numeric" default="0.5">
+  Ratio of mid-near pairs to neighbor pairs. Controls the balance between local and global structure preservation.
+</ParamField>
+
+<ParamField path="FP_ratio" type="numeric" default="2">
+  Ratio of further pairs to neighbor pairs. Controls the repulsive force in the embedding.
+</ParamField>
+
+<ParamField path="distance_method" type="character" default='euclidean'>
+  Distance metric for constructing the k-nearest neighbor graph.
+</ParamField>
+
+<ParamField path="lr" type="numeric" default="1">
+  Learning rate for the AdaGrad optimizer.
+</ParamField>
+
+<ParamField path="num_iters" type="integer" default="250">
+  Number of optimization iterations.
+</ParamField>
+
+<ParamField path="apply_pca" type="logical" default="TRUE">
+  Whether to apply PCA to the input data before constructing the k-nearest neighbor graph. Recommended — greatly accelerates the process with minimal accuracy loss. Does not affect embedding initialization.
+</ParamField>
+
+<ParamField path="init" type="character" default='random'>
+  Initialization method for the low-dimensional embedding. One of `"pca"` or `"random"`.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='pacmap'>
+  Name under which the resulting `DimReduc` object is stored in the Seurat object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='PaCMAP_'>
+  Prefix for the column names of the PaCMAP embedding dimensions.
+</ParamField>
+
+<ParamField path="seed.use" type="integer" default="11">
+  Random seed for reproducibility.
+</ParamField>

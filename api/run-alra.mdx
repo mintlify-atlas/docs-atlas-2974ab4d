@@ -1,0 +1,115 @@
+---
+title: "RunALRA()"
+description: "Zero-preserving imputation of scRNA-seq data using adaptively-thresholded low-rank approximation"
+---
+
+`RunALRA()` implements the ALRA imputation algorithm. It computes a rank-k approximation of the normalized expression matrix, then adaptively thresholds values based on the distribution of negative values in the approximation. Zero values are preserved only when they are truly absent.
+
+## Syntax
+
+```r
+RunALRA(
+  object,
+  k = NULL,
+  q = 10,
+  quantile.prob = 0.001,
+  use.mkl = FALSE,
+  mkl.seed = -1,
+  assay = NULL,
+  slot = "data",
+  setDefaultAssay = TRUE,
+  genes.use = NULL,
+  K = NULL,
+  p.val.th = 1e-10,
+  noise.start = NULL,
+  q.k = 2,
+  k.only = FALSE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object. Also accepts a matrix-like object when called as a default method.
+</ParamField>
+
+<ParamField path="k" type="integer" default="NULL">
+  Rank of the low-rank approximation. Set to `NULL` for automated selection of `k`.
+</ParamField>
+
+<ParamField path="q" type="integer" default="10">
+  Number of additional power iterations in randomized SVD when computing the rank-k approximation.
+</ParamField>
+
+<ParamField path="quantile.prob" type="numeric" default="0.001">
+  Quantile probability used to calculate the per-gene threshold.
+</ParamField>
+
+<ParamField path="use.mkl" type="logical" default="FALSE">
+  Use the Intel MKL-based SVD implementation (requires rpca-mkl package).
+</ParamField>
+
+<ParamField path="mkl.seed" type="integer" default="-1">
+  Seed for the MKL SVD random generator. Any negative value uses the current timestamp. Only relevant when `use.mkl = TRUE`.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Name of the assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="slot" type="character" default="data">
+  Slot within the assay to use as input.
+</ParamField>
+
+<ParamField path="setDefaultAssay" type="logical" default="TRUE">
+  If `TRUE`, sets the resulting `alra` assay as the default assay after imputation.
+</ParamField>
+
+<ParamField path="genes.use" type="character vector" default="NULL">
+  Subset of genes to impute. Defaults to all genes in the assay.
+</ParamField>
+
+<ParamField path="K" type="integer" default="NULL">
+  Number of singular values to compute when choosing `k` automatically. Must be less than the smallest matrix dimension. Defaults to 100 or the smallest dimension, whichever is less.
+</ParamField>
+
+<ParamField path="p.val.th" type="numeric" default="1e-10">
+  P-value threshold for significance when choosing `k` automatically.
+</ParamField>
+
+<ParamField path="noise.start" type="integer" default="NULL">
+  Index from which all smaller singular values are considered noise during automatic `k` selection. Defaults to `K - 20`.
+</ParamField>
+
+<ParamField path="q.k" type="integer" default="2">
+  Number of additional power iterations when choosing `k` automatically.
+</ParamField>
+
+<ParamField path="k.only" type="logical" default="FALSE">
+  If `TRUE`, computes the optimal `k` and stores it in the object without performing imputation. Use with `ALRAChooseKPlot()` to visualize the choice.
+</ParamField>
+
+## Returns
+
+A Seurat object with a new assay named `alra` containing the imputed expression matrix. When `setDefaultAssay = TRUE`, this becomes the default assay. When `k.only = TRUE`, returns the object with the computed `k` stored in the tool slot.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+
+# Simple one-step imputation
+pbmc_small <- RunALRA(object = pbmc_small)
+
+# Two-step: choose k first, then impute
+pbmc_alra <- RunALRA(pbmc_small, k.only = TRUE)
+ggouts <- ALRAChooseKPlot(pbmc_alra)
+do.call(gridExtra::grid.arrange, c(ggouts, nrow = 1))
+pbmc_alra <- RunALRA(pbmc_alra)
+```
+
+## See Also
+
+- [`ALRAChooseKPlot()`](/api/run-alra) — Visualize singular value spectrum for `k` selection
+- [ALRA method guide](/methods/alra)

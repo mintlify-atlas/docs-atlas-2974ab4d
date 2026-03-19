@@ -1,0 +1,371 @@
+---
+title: "BANKSY Spatial Clustering"
+description: "Spatial transcriptomics clustering that unifies cell type identification and tissue domain segmentation by incorporating neighborhood context into gene expression."
+---
+
+## Overview
+
+BANKSY is a spatial omics algorithm that incorporates neighborhood information for clustering spatial transcriptomics data. By augmenting each cell's expression profile with a summary of its spatial neighborhood, BANKSY can:
+
+- Improve cell-type assignment in noisy data
+- Distinguish subtly different cell types stratified by microenvironment
+- Identify spatial domains sharing the same microenvironment
+
+The `RunBanksy()` function in SeuratWrappers brings BANKSY directly into the Seurat workflow.
+
+<Note>
+**Citation**: Vipul Singhal, Nigel Chou, Joseph Lee, Yifei Yue, Jinyue Liu, Wan Kee Chock, Li Lin, Yun-Ching Chang, Erica Mei Ling Teo, Jonathan Aow, Hwee Kuan Lee, Kok Hao Chen & Shyam Prabhakar. *BANKSY unifies cell typing and tissue domain segmentation for scalable spatial omics data analysis.* Nature Genetics, 2024. doi: [10.1038/s41588-024-01664-3](https://doi.org/10.1038/s41588-024-01664-3)
+</Note>
+
+## Installation
+
+Install the Banksy package from GitHub before using `RunBanksy()`:
+
+```bash
+remotes::install_github('prabhakarlab/Banksy')
+```
+
+Also install SeuratWrappers if you haven't already:
+
+```bash
+remotes::install_github('satijalab/seurat-wrappers')
+```
+
+## The `lambda` parameter
+
+The amount of neighborhood information incorporated is controlled by `lambda` in [0, 1]:
+
+- **Low lambda (e.g., 0.2)** — BANKSY operates in cell-typing mode, emphasizing intrinsic gene expression
+- **High lambda (e.g., 0.8)** — BANKSY finds spatial domains, emphasizing microenvironment similarity
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object with gene expression data. If spatial coordinates are stored natively (e.g., from `Load10X_Spatial()`), they are extracted automatically. Otherwise, provide coordinates via `dimx`/`dimy`.
+</ParamField>
+
+<ParamField path="lambda" type="numeric" required>
+  Spatial weight parameter between 0 and 1. Controls the balance between own expression and neighborhood context. Low values favor cell-type clustering; high values favor spatial domain segmentation.
+</ParamField>
+
+<ParamField path="assay" type="character" default="'RNA'">
+  Assay in the Seurat object to use as input.
+</ParamField>
+
+<ParamField path="slot" type="character" default="'data'">
+  Slot within the assay to pull expression data from (e.g., `'data'`, `'counts'`).
+</ParamField>
+
+<ParamField path="use_agf" type="boolean" default="FALSE">
+  Whether to use the Azimuthal Gene Function (AGF), a higher-order neighborhood summary.
+</ParamField>
+
+<ParamField path="dimx" type="character" default="NULL">
+  Column name of the x spatial coordinate in the object metadata. Required when spatial coordinates are not stored natively in the Seurat object.
+</ParamField>
+
+<ParamField path="dimy" type="character" default="NULL">
+  Column name of the y spatial coordinate in the object metadata.
+</ParamField>
+
+<ParamField path="dimz" type="character" default="NULL">
+  Column name of the z spatial coordinate in the object metadata (for 3D data).
+</ParamField>
+
+<ParamField path="ndim" type="integer" default="2">
+  Number of spatial dimensions to extract when using Seurat's native spatial framework.
+</ParamField>
+
+<ParamField path="features" type="character" default="'variable'">
+  Features to include in the BANKSY matrix. Options: `'variable'` (uses `VariableFeatures()`), `'all'` (all features), or a character vector of specific feature names.
+</ParamField>
+
+<ParamField path="group" type="character" default="NULL">
+  Column name of a grouping variable in metadata (e.g., `'orig.ident'`). Required for multi-sample analysis. Tells BANKSY to stagger spatial coordinates by group so that cells from different samples do not overlap during neighborhood computation.
+</ParamField>
+
+<ParamField path="split.scale" type="boolean" default="TRUE">
+  Whether to perform within-group scaling. Useful when analyzing multiple samples with minor technical differences.
+</ParamField>
+
+<ParamField path="k_geom" type="numeric" default="15">
+  Number of nearest neighbors to use when computing the spatial neighborhood.
+</ParamField>
+
+<ParamField path="spatial_mode" type="character" default="'kNN_median'">
+  Kernel for neighborhood computation. Options:
+  - `kNN_median` — k-nearest neighbors with median-scaled Gaussian kernel
+  - `kNN_r` — k-nearest neighbors with 1/r kernel
+  - `kNN_rn` — k-nearest neighbors with 1/r^n kernel
+  - `kNN_rank` — k-nearest neighbors with rank Gaussian kernel
+  - `kNN_unif` — k-nearest neighbors with uniform kernel
+  - `rNN_gauss` — radial nearest neighbors with Gaussian kernel
+</ParamField>
+
+<ParamField path="n" type="numeric" default="2">
+  Exponent of radius for the `kNN_rn` spatial mode.
+</ParamField>
+
+<ParamField path="sigma" type="numeric" default="1.5">
+  Standard deviation of the Gaussian kernel for `rNN_gauss` spatial mode.
+</ParamField>
+
+<ParamField path="alpha" type="numeric" default="0.05">
+  Determines the radius used in `rNN_gauss` spatial mode.
+</ParamField>
+
+<ParamField path="k_spatial" type="numeric" default="10">
+  Number of neighbors to use in radial nearest-neighbor (`rNN`) modes.
+</ParamField>
+
+<ParamField path="assay_name" type="character" default="'BANKSY'">
+  Name for the new BANKSY assay added to the Seurat object.
+</ParamField>
+
+<ParamField path="M" type="numeric" default="NULL">
+  Advanced usage. Highest azimuthal harmonic to compute.
+</ParamField>
+
+## Workflow: Seurat spatial framework
+
+Use this approach when your Seurat object already contains spatial coordinates (e.g., loaded via `Load10X_Spatial()` or from SeuratData).
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(Banksy)
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+    library(ggplot2)
+    library(gridExtra)
+    library(pals)
+
+    mypal <- kelly()[-1]
+
+    InstallData('ssHippo')
+    ss.hippo <- LoadData("ssHippo")
+    ```
+  </Step>
+
+  <Step title="Preprocess">
+    Filter low-quality beads and normalize:
+
+    ```r
+    # Quality filtering
+    ss.hippo[["percent.mt"]] <- PercentageFeatureSet(ss.hippo, pattern = "^MT-")
+    ss.hippo <- subset(ss.hippo,
+      percent.mt < 10 &
+      nCount_Spatial > quantile(ss.hippo$nCount_Spatial, 0.05) &
+      nCount_Spatial < quantile(ss.hippo$nCount_Spatial, 0.98)
+    )
+
+    # Downsample for speed
+    set.seed(42)
+    ss.hippo <- ss.hippo[, sample(colnames(ss.hippo), 1e4)]
+
+    # Normalize and find variable genes
+    ss.hippo <- NormalizeData(ss.hippo)
+    ss.hippo <- FindVariableFeatures(ss.hippo)
+    ss.hippo <- ScaleData(ss.hippo)
+    ```
+  </Step>
+
+  <Step title="Run BANKSY">
+    ```r
+    ss.hippo <- RunBanksy(ss.hippo,
+      lambda = 0.2,
+      assay = 'Spatial',
+      slot = 'data',
+      features = 'variable',
+      k_geom = 15,
+      verbose = TRUE
+    )
+    ```
+
+    The function sets the default assay to `BANKSY` and populates `scale.data` with the scaled BANKSY matrix.
+
+    <Note>
+      Do **not** call `ScaleData()` on the BANKSY assay after `RunBanksy()`. `RunBanksy()` already populates `scale.data` with the lambda-weighted scaled matrix. Calling `ScaleData()` again negates the effect of `lambda`.
+    </Note>
+  </Step>
+
+  <Step title="Dimensionality reduction">
+    ```r
+    ss.hippo <- RunPCA(ss.hippo, assay = 'BANKSY', features = rownames(ss.hippo), npcs = 30)
+    ss.hippo <- RunUMAP(ss.hippo, dims = 1:30)
+    ```
+  </Step>
+
+  <Step title="Clustering">
+    ```r
+    ss.hippo <- FindNeighbors(ss.hippo, dims = 1:30)
+    ss.hippo <- FindClusters(ss.hippo, resolution = 0.5)
+    ```
+  </Step>
+
+  <Step title="Visualize">
+    ```r
+    grid.arrange(
+      DimPlot(ss.hippo, pt.size = 0.25, label = TRUE, label.size = 3, repel = TRUE),
+      SpatialDimPlot(ss.hippo, stroke = NA, label = TRUE, label.size = 3,
+                     repel = TRUE, alpha = 0.5, pt.size.factor = 2),
+      ncol = 2
+    )
+    ```
+  </Step>
+
+  <Step title="Find markers">
+    Switch back to the original assay for differential expression:
+
+    ```r
+    DefaultAssay(ss.hippo) <- 'Spatial'
+    markers <- FindMarkers(ss.hippo,
+      ident.1 = 4, ident.2 = 9,
+      only.pos = FALSE,
+      logfc.threshold = 1,
+      min.pct = 0.5
+    )
+    markers <- markers[markers$p_val_adj < 0.01, ]
+
+    # Visualize marker genes spatially
+    SpatialFeaturePlot(ss.hippo,
+      features = c('ATP2B1', 'CHGB'),
+      pt.size.factor = 3,
+      stroke = NA,
+      alpha = 0.5,
+      max.cutoff = 'q95'
+    )
+    ```
+  </Step>
+</Steps>
+
+## Workflow: Explicit spatial coordinates
+
+Use this approach when spatial coordinates are stored as metadata columns rather than in a native Seurat spatial slot.
+
+<Steps>
+  <Step title="Create Seurat object with coordinate metadata">
+    ```r
+    data(hippocampus)  # VeraFISH dataset from Banksy package
+
+    # Coordinates are in hippocampus$locations with columns sdimx and sdimy
+    vf.hippo <- CreateSeuratObject(
+      counts = hippocampus$expression,
+      meta.data = hippocampus$locations
+    )
+    vf.hippo <- subset(vf.hippo,
+      nCount_RNA > quantile(vf.hippo$nCount_RNA, 0.05) &
+      nCount_RNA < quantile(vf.hippo$nCount_RNA, 0.98)
+    )
+    ```
+  </Step>
+
+  <Step title="Normalize">
+    ```r
+    vf.hippo <- NormalizeData(vf.hippo,
+      scale.factor = 100,
+      normalization.method = 'RC'
+    )
+    vf.hippo <- ScaleData(vf.hippo)
+    ```
+  </Step>
+
+  <Step title="Run BANKSY with explicit coordinates">
+    Pass the metadata column names via `dimx` and `dimy`:
+
+    ```r
+    vf.hippo <- RunBanksy(vf.hippo,
+      lambda = 0.2,
+      dimx = 'sdimx',
+      dimy = 'sdimy',
+      assay = 'RNA',
+      slot = 'data',
+      features = 'all',
+      k_geom = 10
+    )
+    ```
+  </Step>
+
+  <Step title="PCA, clustering, and visualization">
+    ```r
+    vf.hippo <- RunPCA(vf.hippo, assay = 'BANKSY', features = rownames(vf.hippo), npcs = 20)
+    vf.hippo <- FindNeighbors(vf.hippo, dims = 1:20)
+    vf.hippo <- FindClusters(vf.hippo, resolution = 0.5)
+
+    # Plot clusters in spatial coordinates
+    FeatureScatter(vf.hippo, 'sdimx', 'sdimy', cols = mypal, pt.size = 0.75)
+    ```
+  </Step>
+</Steps>
+
+## Multi-sample analysis
+
+When analyzing multiple spatial datasets jointly (without strong batch effects), provide the `group` argument to prevent cells from different samples from being treated as spatial neighbors.
+
+```r
+# Merge multiple Seurat objects
+seu <- Reduce(merge, seu_list)
+seu <- JoinLayers(seu)  # Seurat v5
+
+# Run BANKSY with group argument
+seu <- RunBanksy(seu,
+  lambda = 0.2,
+  assay = 'RNA',
+  slot = 'data',
+  dimx = 'sdimx',
+  dimy = 'sdimy',
+  features = 'all',
+  group = 'orig.ident',   # metadata column identifying each sample
+  split.scale = TRUE,     # per-group scaling
+  k_geom = 15
+)
+```
+
+Providing `group` causes `RunBanksy()` to stagger the spatial coordinates by sample before computing neighborhoods. The staggered coordinates are stored in the metadata as `staggered_sdimx` and `staggered_sdimy` for inspection.
+
+```r
+# Downstream analysis
+seu <- RunPCA(seu, assay = 'BANKSY', features = rownames(seu), npcs = 30)
+seu <- RunUMAP(seu, dims = 1:30)
+seu <- FindNeighbors(seu, dims = 1:30)
+seu <- FindClusters(seu, resolution = 1)
+
+# Visualize staggered spatial layout
+FeatureScatter(seu, 'staggered_sdimx', 'staggered_sdimy', pt.size = 0.75, cols = mypal)
+```
+
+## Spatial integration with Harmony
+
+For multi-sample data with strong batch effects, combine BANKSY with Harmony:
+
+```r
+library(harmony)
+
+# Run BANKSY (split.scale=FALSE when batch effects are large)
+seu <- RunBanksy(seu,
+  lambda = 0.2,
+  assay = 'originalexp',
+  slot = 'data',
+  dimx = 'pxl_col_in_fullres',
+  dimy = 'pxl_row_in_fullres',
+  features = 'all',
+  group = 'sample_id',
+  split.scale = FALSE,
+  k_geom = 6
+)
+
+# Run PCA on BANKSY matrix, then Harmony for batch correction
+seu <- RunPCA(seu, assay = 'BANKSY', features = rownames(seu), npcs = 10)
+seu <- RunHarmony(seu, group.by.vars = 'sample_id')
+
+# Use Harmony reduction for UMAP and clustering
+seu <- RunUMAP(seu, dims = 1:10, reduction = 'harmony')
+seu <- FindNeighbors(seu, dims = 1:10, reduction = 'harmony')
+seu <- FindClusters(seu, resolution = 0.4)
+```
+
+## Additional resources
+
+- [Banksy GitHub repository](https://github.com/prabhakarlab/Banksy)
+- [Banksy documentation site](https://prabhakarlab.github.io/Banksy)

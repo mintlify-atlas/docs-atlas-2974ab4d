@@ -1,0 +1,223 @@
+---
+title: 'RNA velocity'
+description: Estimate transcriptional dynamics and predict future cell states using spliced and unspliced RNA counts.
+---
+
+This page demonstrates how to compute RNA velocity quantifications stored in a Seurat object using SeuratWrappers and velocyto.R.
+
+> *RNA velocity of single cells*
+>
+> Gioele La Manno, Ruslan Soldatov, Amit Zeisel, Emelie Braun, Hannah Hochgerner, Viktor Petukhov, Katja Lidschreiber, Maria E. Kastriti, Peter Lönnerberg, Alessandro Furlan, Jean Fan, Lars E. Borm, Zehua Liu, David van Bruggen, Jimin Guo, Xiaoling He, Roger Barker, Erik Sundström, Gonçalo Castelo-Branco, Patrick Cramer, Igor Adameyko, Sten Linnarsson & Peter V. Kharchenko
+>
+> Nature, 2018. doi: [10.1038/s41586-018-0414-6](https://doi.org/10.1038/s41586-018-0414-6)
+
+For the scVelo (Python) extension, see:
+
+> *Generalizing RNA velocity to transient cell states through dynamical modeling*
+>
+> Volker Bergen, Marius Lange, Stefan Peidli, F. Alexander Wolf & Fabian J. Theis
+>
+> bioRxiv, 2019. doi: [10.1101/820936](https://doi.org/10.1101/820936)
+
+## Installation
+
+<Note>
+The following packages are required before proceeding:
+
+- [Seurat](https://satijalab.org/seurat/install)
+- [SeuratWrappers](https://github.com/satijalab/seurat-wrappers)
+- [velocyto.R](https://github.com/velocyto-team/velocyto.R)
+</Note>
+
+```r
+remotes::install_github('velocyto-team/velocyto.R')
+```
+
+```r
+library(Seurat)
+library(velocyto.R)
+library(SeuratWrappers)
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Generate a loom file with velocyto">
+    Before using `ReadVelocity()`, you must run the velocyto command-line tool on your aligned BAM files to produce a `.loom` file containing spliced, unspliced, and ambiguous count matrices.
+
+    See the [velocyto documentation](https://velocyto.org/velocyto.py/tutorial/index.html) for instructions on generating loom files from your alignment output.
+  </Step>
+
+  <Step title="Load velocity data">
+    Use `ReadVelocity()` to load the loom file into R. This is a wrapper around `velocyto.R::read.loom.matrices()` that redirects progress output to `stderr` rather than `stdout`.
+
+    ```r
+    # Download example mouse bone marrow dataset (if needed)
+    # curl::curl_download(
+    #   url = 'http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom',
+    #   destfile = '~/Downloads/SCG71.loom'
+    # )
+    ldat <- ReadVelocity(file = "~/Downloads/SCG71.loom")
+    ```
+
+    The result is a named list of sparse matrices: typically `spliced`, `unspliced`, and `ambiguous`.
+  </Step>
+
+  <Step title="Create a Seurat object from velocity matrices">
+    Pass the list of matrices to `as.Seurat()`. Each matrix becomes a separate assay. The default assay is the first in the list (or the one specified by `default.assay`).
+
+    ```r
+    bm <- as.Seurat(x = ldat)
+    ```
+  </Step>
+
+  <Step title="Preprocess and cluster">
+    Run standard Seurat preprocessing on the spliced assay before computing velocity.
+
+    ```r
+    bm <- SCTransform(object = bm, assay = "spliced")
+    bm <- RunPCA(object = bm, verbose = FALSE)
+    bm <- FindNeighbors(object = bm, dims = 1:20)
+    bm <- FindClusters(object = bm)
+    bm <- RunUMAP(object = bm, dims = 1:20)
+    ```
+  </Step>
+
+  <Step title="Compute RNA velocity">
+    `RunVelocity()` filters genes by minimum cluster-level expression, computes a cell-to-cell distance matrix from the PCA embedding, and calls `velocyto.R::gene.relative.velocity.estimates()`. Results are stored in the Seurat object via `Tool(object) <- cd`.
+
+    ```r
+    bm <- RunVelocity(
+      object = bm,
+      deltaT = 1,
+      kCells = 25,
+      fit.quantile = 0.02
+    )
+    ```
+  </Step>
+
+  <Step title="Visualize velocity">
+    Retrieve the velocity estimates with `Tool()` and visualize arrows on a low-dimensional embedding using `velocyto.R::show.velocity.on.embedding.cor()`.
+
+    ```r
+    ident.colors <- (scales::hue_pal())(n = length(x = levels(x = bm)))
+    names(x = ident.colors) <- levels(x = bm)
+    cell.colors <- ident.colors[Idents(object = bm)]
+    names(x = cell.colors) <- colnames(x = bm)
+
+    show.velocity.on.embedding.cor(
+      emb = Embeddings(object = bm, reduction = "umap"),
+      vel = Tool(object = bm, slot = "RunVelocity"),
+      n = 200,
+      scale = "sqrt",
+      cell.colors = ac(x = cell.colors, alpha = 0.5),
+      cex = 0.8,
+      arrow.scale = 3,
+      show.grid.flow = TRUE,
+      min.grid.cell.mass = 0.5,
+      grid.n = 40,
+      arrow.lwd = 1,
+      do.par = FALSE,
+      cell.border.alpha = 0.1
+    )
+    ```
+  </Step>
+</Steps>
+
+## Functions
+
+### `ReadVelocity()`
+
+Loads a velocyto-generated `.loom` file and returns a named list of count matrices (spliced, unspliced, ambiguous). This wraps `velocyto.R::read.loom.matrices()` and redirects its progress messages to `stderr` so they do not pollute standard output.
+
+<ParamField path="file" type="string" required>
+  Path to the `.loom` file produced by the velocyto command-line tool.
+</ParamField>
+
+<ParamField path="engine" type="string" default="hdf5r">
+  Backend to use when reading the HDF5-based loom file. Choose from `"hdf5r"` or `"h5"`.
+</ParamField>
+
+<ParamField path="verbose" type="boolean" default="TRUE">
+  Whether to display progress messages from `velocyto.R::read.loom.matrices()`.
+</ParamField>
+
+### `RunVelocity()`
+
+Computes RNA velocity on a Seurat object that contains both spliced and unspliced assays. Gene filtering, cell-to-cell distance calculation, and velocity estimation are all performed inside this function. The resulting velocity object is stored using `Tool(object) <- cd` and can be retrieved with `Tool(object, slot = "RunVelocity")`.
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object containing at minimum a spliced and unspliced assay.
+</ParamField>
+
+<ParamField path="spliced" type="string" default="spliced">
+  Name of the assay containing spliced RNA counts.
+</ParamField>
+
+<ParamField path="unspliced" type="string" default="unspliced">
+  Name of the assay containing unspliced (nascent) RNA counts.
+</ParamField>
+
+<ParamField path="ambiguous" type="string">
+  Optional name of the assay containing ambiguously spliced counts. Pass `NULL` to omit.
+</ParamField>
+
+<ParamField path="spliced.average" type="number" default="0.2">
+  Minimum required average expression count across clusters in the spliced matrix. Genes below this threshold are excluded before velocity estimation.
+</ParamField>
+
+<ParamField path="unspliced.average" type="number" default="0.05">
+  Minimum required average expression count across clusters in the unspliced matrix.
+</ParamField>
+
+<ParamField path="reduction" type="string" default="pca">
+  Name of the dimensional reduction whose embeddings are used to compute the cell-to-cell distance matrix.
+</ParamField>
+
+<ParamField path="group.by" type="string" default="ident">
+  Name of the cell-level metadata variable (or `"ident"` for active identities) used to define clusters for gene filtering.
+</ParamField>
+
+<ParamField path="cells" type="character vector">
+  Subset of cells to use as steady-state cells (passed to `gene.relative.velocity.estimates` as `steady.state.cells`). Defaults to all cells.
+</ParamField>
+
+<ParamField path="graph" type="string">
+  Optional name of a nearest-neighbor graph in the Seurat object to pass as `cellKNN` to the velocity estimator.
+</ParamField>
+
+<ParamField path="ncores" type="number" default="1">
+  Number of cores to use for parallel computation.
+</ParamField>
+
+<ParamField path="verbose" type="boolean" default="TRUE">
+  Whether to display progress messages during gene filtering and distance matrix computation.
+</ParamField>
+
+### `as.Seurat()` for lists
+
+Converts a named list of matrices (as returned by `ReadVelocity()`) into a Seurat object where each matrix becomes a separate assay.
+
+<ParamField path="x" type="list" required>
+  A named list of dense (`matrix`) or sparse (`dgCMatrix`) matrices. Unnamed entries are assigned names `Assay1`, `Assay2`, etc.
+</ParamField>
+
+<ParamField path="default.assay" type="string or number" default="1">
+  Name or index of the matrix to set as the default assay.
+</ParamField>
+
+<ParamField path="slot" type="string" default="counts">
+  Slot in which to store each matrix. Must be `"counts"` or `"data"`. Vectorized: different values can be specified per matrix.
+</ParamField>
+
+<ParamField path="min.cells" type="number" default="0">
+  Minimum number of cells a feature must be detected in (applied only to matrices stored in `counts`). Vectorized.
+</ParamField>
+
+<ParamField path="min.features" type="number" default="0">
+  Minimum number of features detected per cell (applied only to matrices stored in `counts`). Vectorized.
+</ParamField>
+
+<ParamField path="verbose" type="boolean" default="TRUE">
+  Whether to show a progress bar while constructing the Seurat object.
+</ParamField>

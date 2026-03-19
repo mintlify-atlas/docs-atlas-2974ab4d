@@ -1,0 +1,146 @@
+---
+title: "ExportToCellbrowser()"
+description: "Export a Seurat object to UCSC Cell Browser format for interactive visualization"
+---
+
+`ExportToCellbrowser()` exports a Seurat object as a UCSC Cell Browser dataset. It creates all required files (expression matrix, metadata, cell embeddings, marker genes) in the specified directory and optionally launches a local Cell Browser server.
+
+## Syntax
+
+```r
+ExportToCellbrowser(
+  object,
+  dir,
+  dataset.name = Project(object = object),
+  reductions = NULL,
+  markers.file = NULL,
+  cluster.field = NULL,
+  cb.dir = NULL,
+  port = NULL,
+  use.mtx = FALSE,
+  meta.fields = NULL,
+  meta.fields.names = NULL,
+  matrix.slot = "counts",
+  markers.n = 100,
+  skip.markers = FALSE,
+  skip.expr.matrix = FALSE,
+  skip.metadata = FALSE,
+  skip.reductions = FALSE
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object to export.
+</ParamField>
+
+<ParamField path="dir" type="character" required>
+  Output directory where Cell Browser files will be written.
+</ParamField>
+
+<ParamField path="dataset.name" type="character">
+  Name of the Cell Browser dataset. Defaults to `Project(object)`.
+</ParamField>
+
+<ParamField path="reductions" type="character vector" default="NULL">
+  Names of dimensional reductions to export. If `NULL`, exports all available reductions.
+</ParamField>
+
+<ParamField path="markers.file" type="character" default="NULL">
+  Path to a pre-computed markers file. If `NULL` and `skip.markers = FALSE`, markers are computed automatically.
+</ParamField>
+
+<ParamField path="cluster.field" type="character" default="NULL">
+  Metadata column to use as cell cluster labels.
+</ParamField>
+
+<ParamField path="cb.dir" type="character" default="NULL">
+  If provided, also builds the Cell Browser HTML in this directory for direct serving.
+</ParamField>
+
+<ParamField path="port" type="integer" default="NULL">
+  If provided, launches a local Cell Browser server on this port after export.
+</ParamField>
+
+<ParamField path="use.mtx" type="logical" default="FALSE">
+  Export the expression matrix in `.mtx.gz` format (sparse). Automatically enabled for very large matrices.
+</ParamField>
+
+<ParamField path="meta.fields" type="character vector" default="NULL">
+  Metadata columns to include. If `NULL`, all metadata columns are exported.
+</ParamField>
+
+<ParamField path="meta.fields.names" type="character vector" default="NULL">
+  Display names for the metadata fields specified in `meta.fields`.
+</ParamField>
+
+<ParamField path="matrix.slot" type="character" default="counts">
+  Which expression matrix to export. One of `"counts"`, `"data"`, or `"scale.data"`.
+</ParamField>
+
+<ParamField path="markers.n" type="integer" default="100">
+  Number of top markers per cluster to include in the exported markers file.
+</ParamField>
+
+<ParamField path="skip.markers" type="logical" default="FALSE">
+  Skip marker gene computation and export.
+</ParamField>
+
+<ParamField path="skip.expr.matrix" type="logical" default="FALSE">
+  Skip expression matrix export (for incremental updates).
+</ParamField>
+
+<ParamField path="skip.metadata" type="logical" default="FALSE">
+  Skip metadata export.
+</ParamField>
+
+<ParamField path="skip.reductions" type="logical" default="FALSE">
+  Skip dimensional reduction export.
+</ParamField>
+
+## Returns
+
+Invisibly returns `NULL`. Creates the following files in `dir`:
+- `exprMatrix.tsv.gz` (or `matrix.mtx.gz`) — expression matrix
+- `meta.tsv` — cell metadata
+- `<reduction>.coords.tsv.gz` — cell coordinates for each reduction
+- `markers.tsv` — marker genes per cluster
+- `cellbrowser.conf` — Cell Browser configuration file
+
+## StopCellbrowser()
+
+Stops a running Cell Browser server started by `ExportToCellbrowser()`.
+
+```r
+StopCellbrowser()
+```
+
+## Examples
+
+```r
+library(SeuratWrappers)
+
+# Export only
+ExportToCellbrowser(
+  object = seurat_obj,
+  dir = "cellbrowser_output",
+  dataset.name = "PBMC_3k"
+)
+
+# Export and launch local server on port 8080
+ExportToCellbrowser(
+  object = seurat_obj,
+  dir = "cellbrowser_output",
+  dataset.name = "PBMC_3k",
+  cb.dir = "cellbrowser_html",
+  port = 8080
+)
+
+# Stop the server when done
+StopCellbrowser()
+```
+
+## See Also
+
+- [Cell Browser method guide](/methods/cellbrowser)

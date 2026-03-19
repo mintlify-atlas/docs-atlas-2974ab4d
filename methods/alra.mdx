@@ -1,0 +1,161 @@
+---
+title: "ALRA Imputation"
+description: "Zero-preserving imputation of scRNA-seq data using low-rank approximation to recover dropout values."
+---
+
+ALRA (Adaptively-thresholded Low Rank Approximation) imputes dropout values in scRNA-seq data while preserving true biological zeros. It computes a rank-k approximation to the normalized expression matrix, then thresholds values based on the distribution of negative entries produced by the approximation.
+
+<Note>
+  No additional package installation is required. ALRA is implemented directly in SeuratWrappers and uses `rsvd`, which is already imported as a dependency.
+</Note>
+
+## Reference
+
+Linderman, G. C., Zhao, J., & Kluger, Y. (2018). *Zero-preserving imputation of scRNA-seq data using low rank approximation.* bioRxiv, 397588. https://doi.org/10.1101/397588
+
+Source: [KlugerLab/ALRA](https://github.com/KlugerLab/ALRA)
+
+## How it works
+
+ALRA operates on a normalized expression matrix:
+
+1. Computes a rank-k approximation using randomized SVD (via `rsvd`).
+2. For each gene, determines a threshold from the quantile of the approximation's negative values — a signal of the noise floor.
+3. Sets values below the threshold to zero, preserving true biological zeros.
+4. Rescales imputed values to match the original nonzero distribution.
+
+The rank k can be chosen automatically using a statistical test on the singular value spacings, or specified manually.
+
+## Key functions
+
+- `RunALRA()` — Runs ALRA imputation on a Seurat object or matrix. Creates an `alra` assay containing imputed values.
+- `ALRAChooseKPlot()` — Plots singular values, spacings, and p-values from the automated rank selection step. Useful for inspecting the chosen k before running imputation.
+
+## Workflow
+
+### Simple one-step usage
+
+RunALRA will automatically select the rank k and perform imputation in a single call:
+
+```r
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+
+InstallData("pbmc3k")
+data("pbmc3k")
+
+# Preprocess
+pbmc3k <- SCTransform(pbmc3k) |> RunPCA() |> RunUMAP(dims = 1:30)
+
+# Run ALRA — creates an "alra" assay and sets it as the default
+pbmc3k <- RunALRA(pbmc3k)
+```
+
+### Two-step workflow (inspect k first)
+
+Use `k.only = TRUE` to run rank selection without performing imputation, inspect the diagnostic plot, then run imputation using the stored k:
+
+<Steps>
+  <Step title="Choose k">
+    Run ALRA in rank-selection-only mode. The chosen k is stored in the object's tool slot.
+
+    ```r
+    pbmc3k <- RunALRA(pbmc3k, k.only = TRUE)
+    ```
+  </Step>
+  <Step title="Inspect the rank selection plot">
+    Plot the singular value spectrum, spacings, and p-values to verify the chosen k is sensible.
+
+    ```r
+    ggouts <- ALRAChooseKPlot(pbmc3k)
+    do.call(gridExtra::grid.arrange, c(ggouts, nrow = 1))
+    ```
+  </Step>
+  <Step title="Run ALRA with the chosen k">
+    Call `RunALRA()` again. It detects the previously computed k from the tool slot and proceeds with imputation.
+
+    ```r
+    pbmc3k <- RunALRA(pbmc3k)
+    ```
+  </Step>
+</Steps>
+
+### Visualize original vs. imputed expression
+
+```r
+# Normalize the original RNA assay for comparison
+pbmc3k <- NormalizeData(pbmc3k, assay = "RNA")
+
+features.plot <- c("CD3D", "MS4A1", "CD8A", "GZMK", "NCAM1", "FCGR3A")
+
+DefaultAssay(pbmc3k) <- "RNA"
+plot1 <- FeaturePlot(pbmc3k, features.plot, ncol = 2)
+
+DefaultAssay(pbmc3k) <- "alra"
+plot2 <- FeaturePlot(pbmc3k, features.plot, ncol = 2, cols = c("lightgrey", "red"))
+
+CombinePlots(list(plot1, plot2), ncol = 1)
+```
+
+## Parameters
+
+### `RunALRA()`
+
+<ParamField path="k" type="integer | NULL" default="NULL">
+  Rank of the approximation. When `NULL`, k is chosen automatically using the singular value spacing heuristic.
+</ParamField>
+
+<ParamField path="q" type="integer" default="10">
+  Number of additional power iterations in the randomized SVD. Higher values improve accuracy at the cost of speed.
+</ParamField>
+
+<ParamField path="quantile.prob" type="numeric" default="0.001">
+  Quantile probability used to determine the threshold for each gene from its negative approximation values.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the default assay of the Seurat object.
+</ParamField>
+
+<ParamField path="slot" type="character" default='data'>
+  Slot (layer) within the assay to use as input.
+</ParamField>
+
+<ParamField path="setDefaultAssay" type="logical" default="TRUE">
+  If `TRUE`, sets the new `alra` assay as the default assay after imputation.
+</ParamField>
+
+<ParamField path="genes.use" type="character vector" default="NULL">
+  Subset of genes to impute. Defaults to all genes in the object.
+</ParamField>
+
+<ParamField path="K" type="integer" default="100">
+  Number of singular values to compute during automated rank selection. Must be less than the smallest dimension of the expression matrix.
+</ParamField>
+
+<ParamField path="noise.start" type="integer" default="NULL">
+  Index from which singular values are considered noise during automated k selection. Defaults to `K - 20`.
+</ParamField>
+
+<ParamField path="q.k" type="integer" default="2">
+  Number of additional power iterations used when computing the SVD for automated k selection.
+</ParamField>
+
+<ParamField path="k.only" type="logical" default="FALSE">
+  If `TRUE`, only computes the optimal k and stores it in the object without performing imputation.
+</ParamField>
+
+### `ALRAChooseKPlot()`
+
+<ParamField path="object" type="Seurat">
+  A Seurat object on which `RunALRA(k.only = TRUE)` has already been called.
+</ParamField>
+
+<ParamField path="start" type="integer" default="0">
+  Index to start plotting singular value spacings from. Defaults to `floor(k / 2)` when set to 0, which skips the large early spacings for a cleaner visualization.
+</ParamField>
+
+<ParamField path="combine" type="logical" default="TRUE">
+  If `TRUE`, returns the three plots combined into a single ggplot object using `CombinePlots()`.
+</ParamField>

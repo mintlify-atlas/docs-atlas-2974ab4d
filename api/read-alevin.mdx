@@ -1,0 +1,72 @@
+---
+title: "ReadAlevin()"
+description: "Import alevin quantification output into a Seurat object"
+---
+
+`ReadAlevin()` reads the output of the alevin salmon quantification tool and creates a Seurat object with the resulting count matrix.
+
+## Syntax
+
+```r
+ReadAlevin(
+  file,
+  getMeta = FALSE,
+  meanAndVariance = FALSE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="file" type="character" required>
+  Path to the alevin output directory or quant.sf file.
+</ParamField>
+
+<ParamField path="getMeta" type="logical" default="FALSE">
+  If `TRUE`, uses `tximeta` instead of `tximport` to load data with genomic range metadata (requires `tximeta` to be installed). When successful, gene-level metadata (chromosome, start, end) is added to the assay.
+</ParamField>
+
+<ParamField path="meanAndVariance" type="logical" default="FALSE">
+  If `TRUE`, loads the alevin mean and variance matrices instead of counts. The mean matrix becomes the `counts` slot and the variance matrix becomes the `data` slot.
+</ParamField>
+
+<ParamField path="..." type="any">
+  Additional parameters passed to `tximport::tximport()` or `tximeta::tximeta()`.
+</ParamField>
+
+## Returns
+
+A Seurat object created from the alevin count matrix. When `getMeta = TRUE` and genomic ranges are available, the assay includes `chr`, `start`, and `end` feature-level metadata.
+
+## Prerequisites
+
+```r
+BiocManager::install(c("tximport", "fishpond"))
+# Optional for metadata:
+BiocManager::install("tximeta")
+```
+
+## Examples
+
+```r
+library(SeuratWrappers)
+BiocManager::install(c("tximport", "fishpond"))
+
+# Basic import
+object <- ReadAlevin(file = "alevin/output/dir")
+
+# Import with genomic metadata
+object <- ReadAlevin(file = "alevin/output/dir", getMeta = TRUE)
+
+# Access genomic ranges
+head(object[["RNA"]][[c("chr", "start", "end")]])
+
+# Continue with standard Seurat workflow
+object <- NormalizeData(object)
+object <- FindVariableFeatures(object)
+```
+
+## See Also
+
+- [Alevin method guide](/methods/alevin)
+- Reference: Srivastava et al., Genome Biology 2019

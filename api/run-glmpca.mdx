@@ -1,0 +1,93 @@
+---
+title: "RunGLMPCA()"
+description: "Generalized linear model PCA for single-cell count data"
+---
+
+`RunGLMPCA()` runs GLM-PCA on the raw count data in a Seurat object, avoiding the statistical artifacts introduced by normalizing sparse count matrices before PCA.
+
+## Syntax
+
+```r
+RunGLMPCA(
+  object,
+  L = 5,
+  assay = NULL,
+  features = NULL,
+  reduction.name = "glmpca",
+  reduction.key = "GLMPC_",
+  verbose = TRUE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object. Must have counts in the `counts` slot.
+</ParamField>
+
+<ParamField path="L" type="integer" default="5">
+  Number of dimensions (latent factors) to return.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Features to use for GLM-PCA. Defaults to variable features set on the object.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="glmpca">
+  Name for the resulting DimReduc object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="GLMPC_">
+  Prefix for the column names of the GLM-PCA embedding.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Print progress messages.
+</ParamField>
+
+<ParamField path="..." type="any">
+  Additional parameters passed to `glmpca::glmpca()`.
+</ParamField>
+
+## Returns
+
+A Seurat object with a new DimReduc object stored under `reduction.name` containing:
+- Cell embeddings (factors)
+- Feature loadings
+- Standard deviations (L2 norms of factors)
+
+The raw `glmpca` result metadata (excluding factors/loadings) is stored in the DimReduc `misc` slot.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+install.packages("glmpca")  # or: remotes::install_github("willtownes/glmpca")
+
+# Find variable features first
+object <- FindVariableFeatures(object, nfeatures = 2000)
+
+# Run GLM-PCA with 10 dimensions
+object <- RunGLMPCA(object, L = 10)
+
+# Use for clustering
+object <- FindNeighbors(object, reduction = "glmpca", dims = 1:10)
+object <- FindClusters(object)
+
+# Visualize
+object <- RunUMAP(object, reduction = "glmpca", dims = 1:10)
+DimPlot(object)
+```
+
+<Note>
+Do not call `NormalizeData()` or use normalized data before `RunGLMPCA()`. The function reads from the `counts` slot and performs its own statistical normalization internally.
+</Note>
+
+## See Also
+
+- [GLM-PCA method guide](/methods/glmpca)

@@ -1,0 +1,82 @@
+---
+title: "RunCoGAPS()"
+description: "Bayesian non-negative matrix factorization for pattern discovery in single-cell data"
+---
+
+`RunCoGAPS()` runs the CoGAPS (Coordinated Gene Activity in Pattern Sets) algorithm on a Seurat object. It decomposes the expression matrix into latent patterns via sparse Bayesian NMF, storing results as a DimReduc object.
+
+## Syntax
+
+```r
+RunCoGAPS(
+  object,
+  assay = NULL,
+  slot = "counts",
+  params = NULL,
+  temp.file = NULL,
+  reduction.name = "CoGAPS",
+  reduction.key = "CoGAPS_",
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to pull expression data from. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="slot" type="character" default="counts">
+  Slot within the assay to use. Data is log2-transformed (`log2(x + 1)`) internally before being passed to CoGAPS.
+</ParamField>
+
+<ParamField path="params" type="CogapsParams" default="NULL">
+  A `CogapsParams` object specifying CoGAPS settings such as `nPatterns`, `nIterations`, `singleCell`, `sparseOptimization`, and distributed mode. If `NULL`, CoGAPS runs with default parameters.
+</ParamField>
+
+<ParamField path="temp.file" type="character or logical" default="NULL">
+  If `TRUE`, creates a temporary `.mtx` file for the data matrix (required for distributed CoGAPS). If a string, uses that path as the temporary file. Leave `NULL` for in-memory execution.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="CoGAPS">
+  Name for the resulting DimReduc object stored in the Seurat object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="CoGAPS_">
+  Column name prefix for the CoGAPS embedding dimensions.
+</ParamField>
+
+<ParamField path="..." type="any">
+  Additional parameters passed to `CoGAPS::CoGAPS()`.
+</ParamField>
+
+## Returns
+
+A Seurat object with a new DimReduc object stored under `reduction.name`. Cell embeddings correspond to `sampleFactors` and feature loadings correspond to `featureLoadings` from the CoGAPS result.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+BiocManager::install("CoGAPS")
+
+# Basic run with default parameters
+object <- RunCoGAPS(object = seurat_obj)
+
+# Specify number of patterns and iterations
+params <- CoGAPS::CogapsParams()
+params <- CoGAPS::setParam(params, "nPatterns", 8)
+params <- CoGAPS::setParam(params, "nIterations", 50000)
+object <- RunCoGAPS(object = seurat_obj, params = params)
+
+# Visualize patterns
+VlnPlot(object, features = paste0("CoGAPS_", 1:8), group.by = "seurat_clusters")
+```
+
+## See Also
+
+- [CoGAPS method guide](/methods/cogaps)

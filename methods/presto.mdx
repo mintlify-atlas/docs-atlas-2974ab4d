@@ -1,0 +1,188 @@
+---
+title: "Presto Fast Differential Expression"
+description: "Fast Wilcoxon rank-sum tests for marker gene identification, scaling to millions of cells with ~1000x speedup over base R"
+---
+
+Presto reimplements the Wilcoxon rank-sum test and auROC analysis in highly optimized C++, enabling differential expression analysis on datasets with millions of cells in seconds rather than hours. SeuratWrappers integrates Presto as a drop-in replacement for Seurat's built-in Wilcoxon test via `RunPresto()` and `RunPrestoAll()`.
+
+<Note>
+**Citation:** Korsunsky et al. (2019) *Presto scales Wilcoxon and auROC analyses to millions of observations.* bioRxiv. [Preprint](https://www.biorxiv.org/content/10.1101/653253v1.full.pdf)
+
+**Source:** [immunogenomics/presto](https://github.com/immunogenomics/presto) (GitHub)
+</Note>
+
+## Installation
+
+```r
+remotes::install_github('immunogenomics/presto')
+```
+
+## Key Functions
+
+- **`RunPresto()`** — Presto-accelerated equivalent of `FindMarkers()`. Finds markers distinguishing one identity class from another (or from all others).
+- **`RunPrestoAll()`** — Presto-accelerated equivalent of `FindAllMarkers()`. Runs marker detection across all identity classes simultaneously.
+
+Both functions share the same interface as their Seurat counterparts and accept the same parameters. They work by temporarily replacing Seurat's internal `WilcoxDETest` function with the Presto implementation, then restoring the original on completion.
+
+<Note>
+`RunPresto()` and `RunPrestoAll()` only support `test.use = "wilcox"`. For other statistical tests (negbinom, poisson, DESeq2, etc.), use Seurat's native `FindMarkers()` and `FindAllMarkers()` directly.
+</Note>
+
+## RunPresto Parameters
+
+<ParamField path="object" type="Seurat object" required>
+  The Seurat object to test.
+</ParamField>
+
+<ParamField path="ident.1" type="character" default="NULL">
+  Identity class to find markers for. Pass a `phylo` object or `'clustertree'` to find markers for a tree node.
+</ParamField>
+
+<ParamField path="ident.2" type="character" default="NULL">
+  Identity class to compare against. If `NULL`, uses all remaining cells as the comparison group.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use for differential expression testing.
+</ParamField>
+
+<ParamField path="slot" type="character" default='data'>
+  Data slot to pull expression values from.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Subset of features to test. If `NULL`, tests all features.
+</ParamField>
+
+<ParamField path="logfc.threshold" type="numeric" default="0.25">
+  Minimum log-fold change required for a feature to be tested.
+</ParamField>
+
+<ParamField path="min.pct" type="numeric" default="0.1">
+  Minimum fraction of cells in either group that must express a feature for it to be tested.
+</ParamField>
+
+<ParamField path="min.diff.pct" type="numeric" default="-Inf">
+  Minimum difference in expression fraction between groups.
+</ParamField>
+
+<ParamField path="only.pos" type="logical" default="FALSE">
+  If `TRUE`, return only positive markers (upregulated in `ident.1`).
+</ParamField>
+
+<ParamField path="max.cells.per.ident" type="numeric" default="Inf">
+  Downsample each identity class to this many cells before testing.
+</ParamField>
+
+<ParamField path="group.by" type="character" default="NULL">
+  Regroup cells by a different metadata field before testing.
+</ParamField>
+
+<ParamField path="subset.ident" type="character" default="NULL">
+  Subset to a specific identity class before regrouping. Only relevant when `group.by` is set.
+</ParamField>
+
+<ParamField path="reduction" type="character" default="NULL">
+  Run DE on cell embeddings from a dimensionality reduction instead of gene expression.
+</ParamField>
+
+<ParamField path="base" type="numeric" default="2">
+  Logarithm base for fold change calculation.
+</ParamField>
+
+<ParamField path="random.seed" type="numeric" default="1">
+  Random seed for reproducible downsampling.
+</ParamField>
+
+<ParamField path="min.cells.feature" type="numeric" default="3">
+  Minimum number of cells expressing a feature for it to be tested.
+</ParamField>
+
+<ParamField path="min.cells.group" type="numeric" default="3">
+  Minimum number of cells per group required to run the test.
+</ParamField>
+
+## RunPrestoAll Additional Parameters
+
+<ParamField path="node" type="integer" default="NULL">
+  Find markers for a specific node in the cluster tree. Requires `BuildClusterTree()` to have been run.
+</ParamField>
+
+<ParamField path="return.thresh" type="numeric" default="0.01">
+  Only return markers with adjusted p-value below this threshold.
+</ParamField>
+
+## Usage
+
+### Setup
+
+```r
+library(presto)
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+
+InstallData("pbmc3k")
+data("pbmc3k")
+pbmc3k <- NormalizeData(pbmc3k)
+Idents(pbmc3k) <- "seurat_annotations"
+```
+
+### Pairwise marker detection with RunPresto
+
+Find markers distinguishing CD14+ Monocytes from B cells:
+
+```r
+diffexp.B.Mono <- RunPresto(pbmc3k, "CD14+ Mono", "B")
+head(diffexp.B.Mono, 10)
+```
+
+```
+               p_val avg_logFC pct.1 pct.2     p_val_adj
+CD79A  1.660326e-143 -2.989854 0.042 0.936 2.276972e-139
+TYROBP 3.516407e-138  3.512505 0.994 0.102 4.822401e-134
+S100A9 7.003189e-137  4.293303 0.996 0.134 9.604174e-133
+CST3   1.498348e-135  3.344758 0.992 0.174 2.054834e-131
+S100A4 8.872946e-135  2.854897 1.000 0.360 1.216836e-130
+LYZ    2.720838e-134  3.788514 1.000 0.422 3.731357e-130
+```
+
+### Marker detection across all clusters with RunPrestoAll
+
+```r
+diffexp.all <- RunPrestoAll(pbmc3k)
+head(diffexp.all[diffexp.all$cluster == "B", ], 10)
+```
+
+```
+                    p_val avg_logFC pct.1 pct.2     p_val_adj cluster      gene
+CD79A.3      0.000000e+00  2.933865 0.936 0.044  0.000000e+00       B     CD79A
+MS4A1.3      0.000000e+00  2.290577 0.855 0.055  0.000000e+00       B     MS4A1
+LINC00926.1 2.998236e-274  1.956493 0.564 0.010 4.111781e-270       B LINC00926
+CD79B.3     1.126919e-273  2.381160 0.916 0.144 1.545457e-269       B     CD79B
+TCL1A.3     1.962618e-272  2.463556 0.622 0.023 2.691534e-268       B     TCL1A
+```
+
+### Only positive markers, per cluster
+
+```r
+markers <- RunPrestoAll(
+  pbmc3k,
+  only.pos = TRUE,
+  min.pct = 0.25,
+  logfc.threshold = 0.5
+)
+```
+
+### Compare against all other cells
+
+When `ident.2` is `NULL`, the comparison group is all cells not in `ident.1`:
+
+```r
+cd4_markers <- RunPresto(
+  pbmc3k,
+  ident.1 = "CD4 T cells",
+  ident.2 = NULL,
+  only.pos = TRUE
+)
+```

@@ -1,0 +1,207 @@
+---
+title: "CoGAPS Pattern Analysis"
+description: "Bayesian non-negative matrix factorization for discovering latent patterns of gene activity in single-cell RNA-seq data"
+---
+
+CoGAPS (Coordinated Gene Activity in Pattern Sets) applies Bayesian non-negative matrix factorization (NMF) to decompose a gene expression matrix into a set of latent patterns and their associated gene weights. Each pattern captures a coordinated program of gene activity, which can correspond to cell types, lineages, or biological processes.
+
+<Note>
+**Citation:** Stein-O'Brien et al. (2019) *Decomposing cell identity for transfer learning across cellular measurements, platforms, tissues, and species.* Cell Systems. doi: [10.1016/j.cels.2019.04.004](https://doi.org/10.1016/j.cels.2019.04.004)
+
+**Source:** [Bioconductor CoGAPS](https://www.bioconductor.org/packages/release/bioc/html/CoGAPS.html)
+</Note>
+
+## Installation
+
+```r
+BiocManager::install('CoGAPS')
+```
+
+## Key Function
+
+**`RunCoGAPS()`** — Runs CoGAPS on the expression data from a Seurat object and stores the resulting cell embeddings and gene loadings as a `DimReduc` object named `"CoGAPS"`.
+
+## How It Works
+
+CoGAPS factorizes the log-normalized expression matrix into two non-negative matrices:
+- **Sample factors** (cells × patterns) — how strongly each cell expresses each pattern, stored as the reduction's cell embeddings
+- **Feature loadings** (genes × patterns) — which genes drive each pattern, stored as the reduction's feature loadings
+
+The number of patterns (`nPatterns`) is a key hyperparameter. Fewer patterns capture broad lineage differences; more patterns can resolve finer cell-type distinctions and subtypes. CoGAPS is computationally intensive for large datasets and benefits from distributed or parallel execution.
+
+## RunCoGAPS Parameters
+
+<ParamField path="object" type="Seurat object" required>
+  The Seurat object to run CoGAPS on.
+</ParamField>
+
+<ParamField path="assay" type="character" default="DefaultAssay(object)">
+  Assay to pull expression data from.
+</ParamField>
+
+<ParamField path="slot" type="character" default='counts'>
+  Slot within the assay to use. Data is log2-transformed internally (`log2(x + 1)`) before being passed to CoGAPS.
+</ParamField>
+
+<ParamField path="params" type="CogapsParams" default="NULL">
+  A `CogapsParams` object for specifying CoGAPS settings such as `nPatterns`, `nIterations`, `singleCell`, `sparseOptimization`, and distributed mode settings. If `NULL`, CoGAPS runs with default parameters.
+</ParamField>
+
+<ParamField path="temp.file" type="character or logical" default="NULL">
+  Path for a temporary `.mtx` file used when running in distributed mode. Set to `TRUE` to auto-generate a temp file path. Required for distributed/genome-wide runs on large datasets.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='CoGAPS'>
+  Name of the `DimReduc` object to store in the Seurat object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='CoGAPS_'>
+  Key prefix for the CoGAPS reduction dimensions (e.g., `CoGAPS_1`, `CoGAPS_2`).
+</ParamField>
+
+## Workflow
+
+### Local run (small datasets / exploratory)
+
+For quick exploratory runs with a small number of iterations:
+
+```r
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+library(CoGAPS)
+
+InstallData("pbmc3k")
+data("pbmc3k.final")
+
+pbmc3k.final <- RunCoGAPS(
+  object = pbmc3k.final,
+  nPatterns = 3,
+  nIterations = 5000,
+  outputFrequency = 1000,
+  sparseOptimization = TRUE,
+  nThreads = 1,
+  distributed = "genome-wide",
+  singleCell = TRUE,
+  seed = 891
+)
+```
+
+<Note>
+For robust results, 50,000+ iterations are recommended. Expect runtimes of several hours for large datasets. Consider using cloud computing for production runs.
+</Note>
+
+### Cloud / distributed run (large datasets)
+
+Use a `CogapsParams` object to configure distributed execution:
+
+```r
+# 3 patterns — identify broad cell lineages
+params <- CogapsParams(
+  singleCell = TRUE,
+  sparseOptimization = TRUE,
+  seed = 123,
+  nIterations = 50000,
+  nPatterns = 3,
+  distributed = "genome-wide"
+)
+params <- setDistributedParams(params, nSets = 5)
+
+pbmc3k.final <- RunCoGAPS(pbmc3k.final, temp.file = TRUE, params = params)
+```
+
+### 10 patterns — resolve cell types
+
+Increasing `nPatterns` allows CoGAPS to identify finer-grained cell type distinctions and subtypes:
+
+```r
+params <- CogapsParams(
+  singleCell = TRUE,
+  sparseOptimization = TRUE,
+  seed = 123,
+  nIterations = 50000,
+  nPatterns = 10,
+  distributed = "genome-wide"
+)
+params <- setDistributedParams(params, nSets = 5)
+
+pbmc3k.final <- RunCoGAPS(object = pbmc3k.final, temp.file = TRUE, params = params)
+```
+
+## Visualizing CoGAPS Patterns
+
+CoGAPS results are stored as a standard Seurat `DimReduc` object and can be used with all standard Seurat visualization functions.
+
+### Scatter plots of pattern dimensions
+
+```r
+# Plot cells in pattern space (dimensions 1 and 3)
+DimPlot(pbmc3k.final, reduction = "CoGAPS", pt.size = 0.5, dims = c(1, 3))
+```
+
+### Violin plots of pattern activity per cluster
+
+Each CoGAPS dimension represents a pattern. Violin plots show how strongly a pattern is active across cell type clusters:
+
+```r
+# Pattern associated with lymphoid lineage
+VlnPlot(pbmc3k.final, features = "CoGAPS_3")
+
+# Pattern associated with myeloid lineage
+VlnPlot(pbmc3k.final, features = "CoGAPS_1")
+```
+
+With 10 patterns, CoGAPS can resolve specific cell types:
+
+```r
+# DC cells
+VlnPlot(pbmc3k.final, features = "CoGAPS_3")
+
+# B cells
+VlnPlot(pbmc3k.final, features = "CoGAPS_4")
+
+# FCGR3A+ Monocytes
+VlnPlot(pbmc3k.final, features = "CoGAPS_6")
+```
+
+## Advanced Options
+
+### Custom uncertainty matrix
+
+By default, CoGAPS assumes the uncertainty of each data entry is 10% of its value. You can provide a custom uncertainty matrix:
+
+```r
+pbmc3k.final <- RunCoGAPS(
+  pbmc3k.final,
+  uncertainty = datMat.uncertainty,
+  nPatterns = 10,
+  nIterations = 100,
+  outputFrequency = 100,
+  sparseOptimization = TRUE,
+  nThreads = 1,
+  singleCell = TRUE,
+  distributed = "genome-wide"
+)
+```
+
+### Parallel execution
+
+The `nThreads` argument enables multi-threaded execution without affecting the mathematics:
+
+```r
+pbmc3k.final <- RunCoGAPS(
+  pbmc3k.final,
+  nPatterns = 10,
+  nIterations = 100,
+  outputFrequency = 100,
+  sparseOptimization = TRUE,
+  nThreads = 3,
+  singleCell = TRUE,
+  distributed = "genome-wide"
+)
+```
+
+## Additional Resources
+
+- [CoGAPS Bioconductor Vignette](https://bioconductor.org/packages/release/bioc/vignettes/CoGAPS/inst/doc/CoGAPS.html)
+- [CoGAPS GitHub Wiki](https://github.com/FertigLab/CoGAPS/wiki)

@@ -1,0 +1,175 @@
+---
+title: "Conos Integration"
+description: "Joint graph construction for mapping between multiple single-cell RNA-seq datasets."
+---
+
+Conos (Clustering On Network Of Samples) builds a joint graph across multiple single-cell datasets by finding and weighting mutual nearest neighbors in a shared embedding space. SeuratWrappers provides an `as.Seurat()` conversion method for Conos objects, allowing you to bring integrated results back into the Seurat ecosystem for downstream analysis.
+
+## Citation
+
+If you use Conos in your work, please cite:
+
+> *Joint analysis of heterogeneous single-cell RNA-seq dataset collections*
+>
+> Nikolas Barkas, Viktor Petukhov, Daria Nikolaeva, Yaroslav Lozinsky, Samuel Demharter, Konstantin Khodosevich, Peter V. Kharchenko
+>
+> Nature Methods, 2019
+>
+> doi: [10.1038/s41592-019-0466-z](https://doi.org/10.1038/s41592-019-0466-z)
+>
+> GitHub: https://github.com/hms-dbmi/conos
+
+## Installation
+
+```r
+# Install Conos from GitHub
+remotes::install_github('hms-dbmi/conos')
+
+# Install SeuratWrappers for the as.Seurat conversion method
+remotes::install_github('satijalab/seurat-wrappers')
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(conos)
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+
+    InstallData("pbmcsca")
+    data("pbmcsca")
+    ```
+  </Step>
+
+  <Step title="Preprocess each dataset independently">
+    Split the merged Seurat object and run standard preprocessing on each subset separately. Conos works on a list of preprocessed Seurat objects.
+
+    ```r
+    pbmcsca.panel <- SplitObject(pbmcsca, split.by = "Method")
+    for (i in 1:length(pbmcsca.panel)) {
+      pbmcsca.panel[[i]] <- NormalizeData(pbmcsca.panel[[i]]) %>%
+        FindVariableFeatures() %>%
+        ScaleData() %>%
+        RunPCA(verbose = FALSE)
+    }
+    ```
+  </Step>
+
+  <Step title="Build a Conos object">
+    Pass the list of preprocessed Seurat objects to `Conos$new()`.
+
+    ```r
+    pbmcsca.con <- Conos$new(pbmcsca.panel)
+    ```
+  </Step>
+
+  <Step title="Build the joint graph">
+    Connect datasets by finding mutual nearest neighbors in PCA space.
+
+    ```r
+    pbmcsca.con$buildGraph(
+      k = 15,
+      k.self = 5,
+      space = "PCA",
+      ncomps = 30,
+      n.odgenes = 2000,
+      matching.method = "mNN",
+      metric = "angular",
+      score.component.variance = TRUE,
+      verbose = TRUE
+    )
+    ```
+  </Step>
+
+  <Step title="Find communities and embed">
+    Run community detection and compute a joint graph embedding.
+
+    ```r
+    pbmcsca.con$findCommunities()
+    pbmcsca.con$embedGraph()
+    ```
+  </Step>
+
+  <Step title="Convert to Seurat and visualize">
+    Use the SeuratWrappers `as.Seurat()` method to convert the Conos object back to a Seurat object. The joint embedding is stored as the `largeVis` reduction.
+
+    ```r
+    pbmcsca <- as.Seurat(pbmcsca.con)
+    DimPlot(pbmcsca, reduction = "largeVis",
+            group.by = c("Method", "ident", "CellType"), ncol = 3)
+    ```
+  </Step>
+</Steps>
+
+## Examples
+
+### Interferon-stimulated and control PBMC
+
+```r
+InstallData("ifnb")
+data("ifnb")
+ifnb.panel <- SplitObject(ifnb, split.by = "stim")
+for (i in 1:length(ifnb.panel)) {
+  ifnb.panel[[i]] <- NormalizeData(ifnb.panel[[i]]) %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA(verbose = FALSE)
+}
+ifnb.con <- Conos$new(ifnb.panel)
+ifnb.con$buildGraph(
+  k = 15, k.self = 5, space = "PCA", ncomps = 30,
+  n.odgenes = 2000, matching.method = "mNN",
+  metric = "angular", score.component.variance = TRUE, verbose = TRUE
+)
+ifnb.con$findCommunities()
+ifnb.con$embedGraph()
+ifnb <- as.Seurat(ifnb.con)
+DimPlot(ifnb, reduction = "largeVis",
+        group.by = c("stim", "ident", "seurat_annotations"), ncol = 3)
+```
+
+### Eight human pancreatic islet datasets
+
+```r
+InstallData("panc8")
+data("panc8")
+panc8.panel <- SplitObject(panc8, split.by = "replicate")
+for (i in 1:length(panc8.panel)) {
+  panc8.panel[[i]] <- NormalizeData(panc8.panel[[i]]) %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA(verbose = FALSE)
+}
+panc8.con <- Conos$new(panc8.panel)
+panc8.con$buildGraph(
+  k = 15, k.self = 5, space = "PCA", ncomps = 30,
+  n.odgenes = 2000, matching.method = "mNN",
+  metric = "angular", score.component.variance = TRUE, verbose = TRUE
+)
+panc8.con$findCommunities()
+panc8.con$embedGraph()
+panc8 <- as.Seurat(panc8.con)
+DimPlot(panc8, reduction = "largeVis",
+        group.by = c("replicate", "ident", "celltype"), ncol = 3)
+```
+
+## SeuratWrappers Function: as.Seurat.Conos
+
+SeuratWrappers registers an `as.Seurat()` S3 method for Conos objects. When called on a Conos object after `embedGraph()`, it:
+
+- Combines all cells from all input datasets into a single Seurat object
+- Transfers cell metadata (sample labels, community assignments) into the Seurat object
+- Stores the Conos joint embedding (e.g., `largeVis` or `UMAP`) as a `DimReduc` object
+- Propagates community cluster identities to `Idents()`
+
+```r
+# After building and embedding the Conos graph:
+seurat.obj <- as.Seurat(conos.obj)
+```
+
+<Note>
+The reduction name in the converted Seurat object depends on which embedding method was used in `embedGraph()`. The default is `largeVis`. If you used UMAP embedding, it will appear as `UMAP`.
+</Note>

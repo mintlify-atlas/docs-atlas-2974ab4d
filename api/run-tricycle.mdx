@@ -1,0 +1,110 @@
+---
+title: "Runtricycle()"
+description: "Estimate cell cycle position from scRNA-seq data using tricycle"
+---
+
+`Runtricycle()` projects cells onto a reference cell cycle embedding to estimate each cell's position in the cell cycle as a continuous angle θ (theta) between 0 and 2π.
+
+## Syntax
+
+```r
+Runtricycle(
+  object,
+  assay = NULL,
+  slot = "data",
+  reduction.name = "tricycleEmbedding",
+  reduction.key = "tricycleEmbedding_",
+  gname = NULL,
+  gname.type = c("ENSEMBL", "SYMBOL"),
+  species = c("mouse", "human"),
+  AnnotationDb = NULL,
+  center.pc1 = 0,
+  center.pc2 = 0
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="slot" type="character" default="data">
+  Slot to use. Should be normalized log-expression (`"data"`).
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="tricycleEmbedding">
+  Name for the resulting 2D projection stored as a DimReduc.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="tricycleEmbedding_">
+  Prefix for embedding column names.
+</ParamField>
+
+<ParamField path="gname" type="character vector" default="NULL">
+  Gene names used to subset the data. If `NULL`, all genes are used.
+</ParamField>
+
+<ParamField path="gname.type" type="character" default="ENSEMBL">
+  Type of gene identifiers used. One of `"ENSEMBL"` or `"SYMBOL"`.
+</ParamField>
+
+<ParamField path="species" type="character" default="mouse">
+  Species for the reference projection. One of `"mouse"` or `"human"`.
+</ParamField>
+
+<ParamField path="AnnotationDb" type="AnnotationDb" default="NULL">
+  An annotation database object (e.g., from `org.Mm.eg.db`) for gene name conversion. Required when `gname.type = "SYMBOL"`.
+</ParamField>
+
+<ParamField path="center.pc1" type="numeric" default="0">
+  Value to subtract from PC1 of the projection (centering adjustment).
+</ParamField>
+
+<ParamField path="center.pc2" type="numeric" default="0">
+  Value to subtract from PC2 of the projection (centering adjustment).
+</ParamField>
+
+## Returns
+
+A Seurat object with:
+- A new metadata column `tricyclePosition` containing the estimated cell cycle angle θ (0 to 2π)
+- A new DimReduc under `reduction.name` containing the 2D cell cycle embedding
+
+### Interpreting tricyclePosition
+
+| θ range | Cell cycle phase |
+|---------|------------------|
+| ~1.5 – 2π / 0 | G1 |
+| ~0 – 0.5π | S |
+| ~0.5π – π | G2/M |
+| ~π – 1.5π | M/G1 |
+
+## Examples
+
+```r
+library(SeuratWrappers)
+BiocManager::install("tricycle")
+
+# Run tricycle (ENSEMBL gene IDs)
+object <- Runtricycle(
+  object = seurat_obj,
+  slot = "data",
+  species = "human",
+  gname.type = "ENSEMBL"
+)
+
+# Visualize cell cycle position on UMAP
+FeaturePlot(object, features = "tricyclePosition", reduction = "umap")
+
+# View the tricycle embedding
+DimPlot(object, reduction = "tricycleEmbedding")
+```
+
+## See Also
+
+- [tricycle method guide](/methods/tricycle)

@@ -1,0 +1,220 @@
+---
+title: 'Monocle 3 trajectory analysis'
+description: Pseudotime trajectory inference and cell ordering using Monocle 3 with Seurat objects.
+---
+
+This page demonstrates how to run trajectory inference and pseudotime calculations with Monocle 3 on Seurat objects using SeuratWrappers.
+
+> *The single-cell transcriptional landscape of mammalian organogenesis*
+>
+> Junyue Cao, Malte Spielmann, Xiaojie Qiu, Xingfan Huang, Daniel M. Ibrahim, Andrew J. Hill, Fan Zhang, Stefan Mundlos, Lena Christiansen, Frank J. Steemers, Cole Trapnell & Jay Shendure
+>
+> Nature, 2019. doi: [10.1038/s41586-019-0969-x](https://doi.org/10.1038/s41586-019-0969-x)
+
+## Installation
+
+<Note>
+The following packages are required before proceeding:
+
+- [Seurat](https://satijalab.org/seurat/install)
+- [SeuratWrappers](https://github.com/satijalab/seurat-wrappers)
+- [SeuratData](https://github.com/satijalab/seurat-data)
+- [Monocle 3](https://cole-trapnell-lab.github.io/monocle3/docs/installation/)
+</Note>
+
+```r
+remotes::install_github('cole-trapnell-lab/monocle3')
+```
+
+```r
+library(monocle3)
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(magrittr)
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Prepare and integrate data">
+    Load your dataset and run standard Seurat preprocessing. This example uses the HCA Bone Marrow 40k dataset.
+
+    ```r
+    InstallData("hcabm40k")
+    data("hcabm40k")
+
+    hcabm40k <- SplitObject(hcabm40k, split.by = "orig.ident")
+    for (i in seq_along(hcabm40k)) {
+      hcabm40k[[i]] <- NormalizeData(hcabm40k[[i]]) %>% FindVariableFeatures()
+    }
+    features <- SelectIntegrationFeatures(hcabm40k)
+    for (i in seq_along(along.with = hcabm40k)) {
+      hcabm40k[[i]] <- ScaleData(hcabm40k[[i]], features = features) %>%
+        RunPCA(features = features)
+    }
+
+    anchors <- FindIntegrationAnchors(hcabm40k, reference = c(1, 2),
+      reduction = "rpca", dims = 1:30)
+    integrated <- IntegrateData(anchors, dims = 1:30)
+    ```
+  </Step>
+
+  <Step title="Cluster and embed">
+    Run standard dimensionality reduction and clustering in Seurat.
+
+    ```r
+    integrated <- ScaleData(integrated)
+    integrated <- RunPCA(integrated)
+    integrated <- RunUMAP(integrated, dims = 1:30, reduction.name = "UMAP")
+    integrated <- FindNeighbors(integrated, dims = 1:30)
+    integrated <- FindClusters(integrated)
+    DimPlot(integrated, group.by = c("orig.ident", "ident"))
+    ```
+  </Step>
+
+  <Step title="Convert to cell_data_set">
+    Use `as.cell_data_set()` to convert the Seurat object to a Monocle 3 `cell_data_set`. Then run Monocle 3's own clustering to compute partitions, which are required for trajectory inference.
+
+    <Warning>
+    Monocle 3 trajectories require cluster partitions, which Seurat does not calculate. After converting to a `cell_data_set`, you must run `cluster_cells()` before calling `learn_graph()`. If partitions are missing, `as.cell_data_set()` will assign all cells to a single partition and issue a warning.
+    </Warning>
+
+    ```r
+    cds <- as.cell_data_set(integrated)
+    cds <- cluster_cells(cds)
+    p1 <- plot_cells(cds, show_trajectory_graph = FALSE)
+    p2 <- plot_cells(cds, color_cells_by = "partition",
+      show_trajectory_graph = FALSE)
+    wrap_plots(p1, p2)
+    ```
+  </Step>
+
+  <Step title="Subset to a single partition and learn graph">
+    Trajectories can only be inferred within a single connected partition. Subset cells to the partition of interest, convert back to Seurat, then convert again to a fresh `cell_data_set` before learning the graph.
+
+    ```r
+    integrated.sub <- subset(as.Seurat(cds), monocle3_partitions == 1)
+    cds <- as.cell_data_set(integrated.sub)
+    cds <- learn_graph(cds)
+    plot_cells(cds,
+      label_groups_by_cluster = FALSE,
+      label_leaves = FALSE,
+      label_branch_points = FALSE
+    )
+    ```
+  </Step>
+
+  <Step title="Order cells by pseudotime">
+    Set a root cell (or cells) to define the start of the trajectory, then order all cells along the pseudotime axis.
+
+    ```r
+    max.avp <- which.max(unlist(FetchData(integrated.sub, "AVP")))
+    max.avp <- colnames(integrated.sub)[max.avp]
+    cds <- order_cells(cds, root_cells = max.avp)
+    plot_cells(cds,
+      color_cells_by = "pseudotime",
+      label_cell_groups = FALSE,
+      label_leaves = FALSE,
+      label_branch_points = FALSE
+    )
+    ```
+  </Step>
+
+  <Step title="Bring results back to Seurat">
+    Use `as.Seurat()` to transfer Monocle 3 results back to a Seurat object for visualization with Seurat's plotting utilities.
+
+    ```r
+    integrated.sub <- as.Seurat(cds)
+    FeaturePlot(integrated.sub, "monocle3_pseudotime")
+    ```
+  </Step>
+</Steps>
+
+## Functions
+
+### `as.cell_data_set()`
+
+Converts a Seurat object to a Monocle 3 `cell_data_set`. Uses `as.SingleCellExperiment()` internally to transfer expression data and cell-level metadata, then adds the following:
+
+- Cell embeddings are transferred to `reducedDims`. Reduction names are uppercased (e.g. `"umap"` → `"UMAP"`) to match Monocle 3 conventions.
+- Feature loadings from the last dimensional reduction are written to `cds@reduce_dim_aux$gene_loadings`.
+- Standard deviations from the last dimensional reduction are written to `cds@reduce_dim_aux$prop_var_expl`.
+- If `monocle3_clusters` and `monocle3_partitions` columns exist in cell metadata, they are used directly. Otherwise, Seurat's nearest-neighbor graph is converted to an `igraph` object and Seurat's cluster identities are used (with all cells assigned to a single partition).
+
+<ParamField path="x" type="Seurat" required>
+  A Seurat object to convert.
+</ParamField>
+
+<ParamField path="assay" type="string" default="DefaultAssay(x)">
+  Name of the assay to transfer. Defaults to the active assay.
+</ParamField>
+
+<ParamField path="reductions" type="character vector">
+  Names of dimensional reductions to include. Defaults to all reductions associated with `assay` plus global reductions.
+</ParamField>
+
+<ParamField path="default.reduction" type="string">
+  Name of the dimensional reduction to use for storing clustering results. Defaults to the object's default reduction for `assay`.
+</ParamField>
+
+<ParamField path="graph" type="string">
+  Name of the nearest-neighbor graph to use for clustering. Defaults to `"{assay}_snn"`.
+</ParamField>
+
+<ParamField path="group.by" type="string">
+  Name of a cell-level metadata column to use as cluster identities. Pass `NULL` (the default) to use the active identities.
+</ParamField>
+
+### `as.Seurat()` for `cell_data_set`
+
+Converts a Monocle 3 `cell_data_set` back to a Seurat object. Builds on `as.Seurat.SingleCellExperiment()` and additionally transfers:
+
+- Feature loadings from `cds@reduce_dim_aux$gene_loadings` into the reduction specified by `loadings` (or the first reduction whose name contains `"pca"`).
+- Monocle 3 cluster assignments → metadata column `monocle3_clusters` and the active identity class.
+- Monocle 3 partitions → metadata column `monocle3_partitions`.
+- Monocle 3 pseudotime values → metadata column `monocle3_pseudotime`.
+- The nearest-neighbor graph (if present) → a Seurat `Graph` object stored as `"{assay}_monocle3_graph"`.
+
+<ParamField path="x" type="cell_data_set" required>
+  A Monocle 3 `cell_data_set` object to convert.
+</ParamField>
+
+<ParamField path="counts" type="string" default="counts">
+  Name of the assay slot in the `cell_data_set` to use as counts.
+</ParamField>
+
+<ParamField path="data" type="string">
+  Name of the assay slot to use as normalized data. Pass `NULL` to skip.
+</ParamField>
+
+<ParamField path="assay" type="string" default="RNA">
+  Name to give the assay in the resulting Seurat object.
+</ParamField>
+
+<ParamField path="project" type="string" default="cell_data_set">
+  Project name for the resulting Seurat object.
+</ParamField>
+
+<ParamField path="loadings" type="string">
+  Name of the dimensional reduction in the resulting Seurat object to receive feature loadings. Defaults to the first reduction whose name contains `"pca"` (case-insensitive). Pass `NA` to suppress transfer of loadings.
+</ParamField>
+
+<ParamField path="clusters" type="string">
+  Name of the clustering method stored in the `cell_data_set` to use when pulling cluster assignments and pseudotime. Defaults to the default dimensional reduction of the resulting Seurat object.
+</ParamField>
+
+## What gets transferred
+
+| Data | Seurat → Monocle 3 | Monocle 3 → Seurat |
+|---|---|---|
+| Expression matrix | `counts` assay via `as.SingleCellExperiment` | Counts/data slots via `as.Seurat.SingleCellExperiment` |
+| Cell metadata | All columns | All columns |
+| Cell embeddings | `reducedDims` (uppercased names) | `DimReduc` objects (lowercased names) |
+| Feature loadings | `cds@reduce_dim_aux$gene_loadings` | Added to reduction specified by `loadings` |
+| Cluster assignments | `cds@clusters[[reduction]]$clusters` | `monocle3_clusters` column + active identity |
+| Partitions | `cds@clusters[[reduction]]$partitions` | `monocle3_partitions` column |
+| Pseudotime | — | `monocle3_pseudotime` column |
+| Nearest-neighbor graph | `igraph` in `cds@clusters[[reduction]]$cluster_result$g` | `"{assay}_monocle3_graph"` Graph object |

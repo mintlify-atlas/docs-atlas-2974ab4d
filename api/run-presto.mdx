@@ -1,0 +1,144 @@
+---
+title: "RunPresto() / RunPrestoAll()"
+description: "Fast Wilcoxon rank-sum test for differential expression using Presto"
+---
+
+SeuratWrappers provides two Presto-based differential expression functions:
+
+- **`RunPresto()`** — Drop-in replacement for `FindMarkers()` using Presto's fast Wilcoxon test
+- **`RunPrestoAll()`** — Drop-in replacement for `FindAllMarkers()` using Presto
+
+Both functions temporarily swap Seurat's internal `WilcoxDETest` with Presto's implementation, which is ~1000x faster for large datasets.
+
+## RunPresto()
+
+### Syntax
+
+```r
+RunPresto(
+  object,
+  ident.1 = NULL,
+  ident.2 = NULL,
+  group.by = NULL,
+  subset.ident = NULL,
+  assay = NULL,
+  slot = "data",
+  reduction = NULL,
+  features = NULL,
+  logfc.threshold = 0.25,
+  test.use = "wilcox",
+  min.pct = 0.1,
+  min.diff.pct = -Inf,
+  verbose = TRUE,
+  only.pos = FALSE,
+  max.cells.per.ident = Inf,
+  random.seed = 1,
+  latent.vars = NULL,
+  min.cells.feature = 3,
+  min.cells.group = 3,
+  mean.fxn = NULL,
+  fc.name = NULL,
+  base = 2,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object.
+</ParamField>
+
+<ParamField path="ident.1" type="character" default="NULL">
+  Identity class to define as positive. If `NULL`, uses all identities.
+</ParamField>
+
+<ParamField path="ident.2" type="character" default="NULL">
+  Identity class to compare against. If `NULL`, uses all other cells.
+</ParamField>
+
+<ParamField path="group.by" type="character" default="NULL">
+  Metadata column to use for grouping cells instead of active identities.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="slot" type="character" default="data">
+  Slot within the assay to use.
+</ParamField>
+
+<ParamField path="logfc.threshold" type="numeric" default="0.25">
+  Minimum log fold-change threshold for reporting genes.
+</ParamField>
+
+<ParamField path="min.pct" type="numeric" default="0.1">
+  Minimum fraction of cells expressing the gene in either group.
+</ParamField>
+
+<ParamField path="only.pos" type="logical" default="FALSE">
+  Return only positive markers.
+</ParamField>
+
+<ParamField path="max.cells.per.ident" type="numeric" default="Inf">
+  Maximum number of cells per identity class (downsamples for speed).
+</ParamField>
+
+## RunPrestoAll()
+
+### Syntax
+
+```r
+RunPrestoAll(
+  object,
+  assay = NULL,
+  features = NULL,
+  logfc.threshold = 0.25,
+  test.use = "wilcox",
+  slot = "data",
+  min.pct = 0.1,
+  min.diff.pct = -Inf,
+  node = NULL,
+  verbose = TRUE,
+  only.pos = FALSE,
+  max.cells.per.ident = Inf,
+  random.seed = 1,
+  latent.vars = NULL,
+  min.cells.feature = 3,
+  min.cells.group = 3,
+  mean.fxn = NULL,
+  fc.name = NULL,
+  base = 2,
+  return.thresh = 0.01,
+  ...
+)
+```
+
+### Additional Parameters
+
+<ParamField path="return.thresh" type="numeric" default="0.01">
+  Only return markers with adjusted p-value below this threshold.
+</ParamField>
+
+## Returns
+
+A data frame identical to the output of `FindMarkers()` / `FindAllMarkers()`, containing columns: `p_val`, `avg_log2FC`, `pct.1`, `pct.2`, `p_val_adj`.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+remotes::install_github("immunogenomics/presto")
+
+# Find markers for one cluster
+markers_14 <- RunPresto(object, ident.1 = "14", ident.2 = NULL)
+
+# Find all markers
+all_markers <- RunPrestoAll(object, only.pos = TRUE, logfc.threshold = 0.5)
+top5 <- all_markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+```
+
+## See Also
+
+- [Presto method guide](/methods/presto)

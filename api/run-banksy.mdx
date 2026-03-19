@@ -1,0 +1,160 @@
+---
+title: "RunBanksy()"
+description: "Spatial transcriptomics clustering incorporating neighborhood gene expression context"
+---
+
+`RunBanksy()` computes a BANKSY matrix that augments each cell's expression with the average expression of its spatial neighbors. The resulting matrix enables clustering that captures both cell type identity and spatial tissue domains.
+
+## Syntax
+
+```r
+RunBanksy(
+  object,
+  lambda,
+  assay = "RNA",
+  slot = "data",
+  use_agf = FALSE,
+  dimx = NULL,
+  dimy = NULL,
+  dimz = NULL,
+  ndim = 2,
+  features = "variable",
+  group = NULL,
+  split.scale = TRUE,
+  k_geom = 15,
+  n = 2,
+  sigma = 1.5,
+  alpha = 0.05,
+  k_spatial = 10,
+  spatial_mode = "kNN_median",
+  assay_name = "BANKSY",
+  M = NULL,
+  verbose = TRUE
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object with spatial coordinate metadata.
+</ParamField>
+
+<ParamField path="lambda" type="numeric" required>
+  Spatial weight parameter. `0` uses only cell-intrinsic expression (equivalent to standard clustering). `1` uses only neighborhood expression. Values around `0.2` typically give good cell-type results; `0.8` is better for tissue domain segmentation.
+</ParamField>
+
+<ParamField path="assay" type="character" default="RNA">
+  Assay in the Seurat object to use.
+</ParamField>
+
+<ParamField path="slot" type="character" default="data">
+  Slot within the assay to use.
+</ParamField>
+
+<ParamField path="use_agf" type="logical" default="FALSE">
+  Whether to use the Azimuthal Gabor Filter (AGF) for higher-order neighborhood features.
+</ParamField>
+
+<ParamField path="dimx" type="character" default="NULL">
+  Column name in cell metadata containing the spatial x-coordinate.
+</ParamField>
+
+<ParamField path="dimy" type="character" default="NULL">
+  Column name in cell metadata containing the spatial y-coordinate.
+</ParamField>
+
+<ParamField path="dimz" type="character" default="NULL">
+  Column name in cell metadata containing the spatial z-coordinate (3D data only).
+</ParamField>
+
+<ParamField path="ndim" type="integer" default="2">
+  Number of spatial dimensions to use (2 or 3).
+</ParamField>
+
+<ParamField path="features" type="character" default="variable">
+  Features to compute. One of `"all"`, `"variable"`, or a character vector of feature names.
+</ParamField>
+
+<ParamField path="group" type="character" default="NULL">
+  Column name of a grouping variable in metadata. Used to compute neighbors within groups.
+</ParamField>
+
+<ParamField path="split.scale" type="logical" default="TRUE">
+  Whether to scale expression separately by group.
+</ParamField>
+
+<ParamField path="k_geom" type="numeric" default="15">
+  Number of neighbors for the kNN spatial graph (used with kNN-based `spatial_mode`).
+</ParamField>
+
+<ParamField path="n" type="numeric" default="2">
+  Exponent of radius for `kNN_rn` spatial mode.
+</ParamField>
+
+<ParamField path="sigma" type="numeric" default="1.5">
+  Standard deviation of the Gaussian kernel for `rNN_gauss` mode.
+</ParamField>
+
+<ParamField path="alpha" type="numeric" default="0.05">
+  Determines the radius used in `rNN_gauss` mode.
+</ParamField>
+
+<ParamField path="k_spatial" type="numeric" default="10">
+  Number of neighbors for radial nearest neighbor modes.
+</ParamField>
+
+<ParamField path="spatial_mode" type="character" default="kNN_median">
+  Kernel for spatial neighborhood computation. Options:
+  - `kNN_median` — k-nearest neighbors with median-scaled Gaussian kernel
+  - `kNN_r` — k-nearest neighbors with 1/r kernel
+  - `kNN_rn` — k-nearest neighbors with 1/r^n kernel
+  - `kNN_rank` — k-nearest neighbors with rank Gaussian kernel
+  - `kNN_unif` — k-nearest neighbors with uniform kernel
+  - `rNN_gauss` — radial nearest neighbors with Gaussian kernel
+</ParamField>
+
+<ParamField path="assay_name" type="character" default="BANKSY">
+  Name for the new BANKSY assay stored in the Seurat object.
+</ParamField>
+
+<ParamField path="M" type="numeric" default="NULL">
+  Highest azimuthal harmonic for AGF computation. Advanced usage.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Print progress messages.
+</ParamField>
+
+## Returns
+
+A Seurat object with a new assay (default name `BANKSY`) containing the BANKSY-augmented expression matrix. Downstream analysis (PCA, UMAP, clustering) should be run on this assay.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+
+# Run BANKSY with spatial coordinates in metadata
+object <- RunBanksy(
+  object = seurat_obj,
+  lambda = 0.2,
+  assay = "RNA",
+  slot = "data",
+  dimx = "x",
+  dimy = "y",
+  features = "variable",
+  spatial_mode = "kNN_median",
+  k_geom = 15
+)
+
+# Downstream clustering on BANKSY assay
+DefaultAssay(object) <- "BANKSY"
+object <- ScaleData(object)
+object <- RunPCA(object)
+object <- FindNeighbors(object)
+object <- FindClusters(object, resolution = 0.5)
+```
+
+## See Also
+
+- [BANKSY method guide](/methods/banksy)

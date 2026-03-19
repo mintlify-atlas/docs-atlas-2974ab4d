@@ -1,0 +1,196 @@
+---
+title: "schex Hexagonal Binning Visualization"
+description: "Hexagonal binning for single-cell data that reduces overplotting by summarizing cells into hexagon bins, enabling clear visualization of large datasets."
+---
+
+## Overview
+
+Reduced-dimension plots (UMAP, PCA, tSNE) are essential for single-cell analysis, but as dataset sizes grow, cells overlap and obscure information — even with transparency settings. schex addresses this by binning cells into hexagons and plotting a summary statistic for each bin instead of individual points.
+
+Benefits:
+
+- Eliminates overplotting in large datasets
+- Preserves the visual structure of the embedding
+- Supports plotting metadata, cluster labels, and gene expression per bin
+- Works seamlessly with Seurat objects
+
+<Note>
+**Citation**: Saskia Freytag (2019). *schex: Hexagonal binning for single cell data.* R package.
+
+Original biology reference: Delile, Julien et al. *Single cell transcriptomics reveals spatial and temporal dynamics of gene expression in the developing mouse spinal cord.* doi: [10.1242/dev.173807](https://doi.org/10.1242/dev.173807)
+
+Source: [SaskiaFreytag/schex](https://github.com/SaskiaFreytag/schex)
+</Note>
+
+## Installation
+
+```bash
+remotes::install_github('SaskiaFreytag/schex')
+```
+
+You will also need SeuratData for the example data:
+
+```bash
+remotes::install_github('satijalab/seurat-data')
+```
+
+## Key functions
+
+| Function | Description |
+|---|---|
+| `make_hexbin()` | Computes hexagon bin assignments for each cell |
+| `plot_hexbin_density()` | Plots cell count per hexagon bin |
+| `plot_hexbin_meta()` | Colors hexagons by a metadata variable |
+| `plot_hexbin_gene()` | Colors hexagons by gene expression |
+| `make_hexbin_label()` | Computes label positions for factor variables |
+
+## Complete workflow
+
+<Steps>
+  <Step title="Load libraries">
+    ```r
+    library(Seurat)
+    library(SeuratData)
+    library(ggplot2)
+    library(ggrepel)
+    library(schex)
+
+    theme_set(theme_classic())
+    ```
+  </Step>
+
+  <Step title="Load and preprocess data">
+    This example uses the PBMC 3k dataset:
+
+    ```r
+    InstallData("pbmc3k")
+    pbmc <- pbmc3k
+    ```
+
+    Filter low-quality cells:
+
+    ```r
+    pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+    pbmc <- subset(pbmc,
+      subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5
+    )
+    ```
+  </Step>
+
+  <Step title="Normalize, identify variable genes, and scale">
+    ```r
+    pbmc <- NormalizeData(pbmc,
+      normalization.method = "LogNormalize",
+      scale.factor = 10000,
+      verbose = FALSE
+    )
+    pbmc <- FindVariableFeatures(pbmc,
+      selection.method = "vst",
+      nfeatures = 2000,
+      verbose = FALSE
+    )
+
+    all.genes <- rownames(pbmc)
+    pbmc <- ScaleData(pbmc, features = all.genes, verbose = FALSE)
+    ```
+  </Step>
+
+  <Step title="Dimensionality reduction and clustering">
+    ```r
+    pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc), verbose = FALSE)
+    pbmc <- RunUMAP(pbmc, dims = 1:10, verbose = FALSE)
+    pbmc <- FindNeighbors(pbmc, dims = 1:10, verbose = FALSE)
+    pbmc <- FindClusters(pbmc, resolution = 0.5, verbose = FALSE)
+    ```
+  </Step>
+
+  <Step title="Compute hexagon bin representation">
+    `make_hexbin()` assigns each cell to a hexagon bin in the specified embedding. The `nbins` parameter controls the number of bins along the x-axis:
+
+    ```r
+    pbmc <- make_hexbin(pbmc, nbins = 40, dimension_reduction = "UMAP")
+    ```
+
+    <Note>
+      Choose `nbins` based on dataset size. More cells generally require a higher `nbins` value to avoid bins that are too coarse. Start with 20–40 for datasets under 10k cells; increase for larger datasets. The density plot in the next step helps you assess whether bins are evenly populated.
+    </Note>
+  </Step>
+
+  <Step title="Plot bin density">
+    Check how many cells fall into each hexagon. Bins should be relatively evenly populated; if one bin has far more cells than others, increase `nbins`:
+
+    ```r
+    plot_hexbin_density(pbmc)
+    ```
+  </Step>
+
+  <Step title="Plot metadata in hexagon representation">
+    Color hexagons by a metadata column. Use `action` to specify how to summarize the column within each bin:
+
+    ```r
+    # Median total count per bin
+    plot_hexbin_meta(pbmc, col = "nCount_RNA", action = "median")
+
+    # Majority cluster label per bin
+    plot_hexbin_meta(pbmc, col = "RNA_snn_res.0.5", action = "majority")
+    ```
+
+    Add cluster labels with `ggrepel` for readability:
+
+    ```r
+    label_df <- make_hexbin_label(pbmc, col = "RNA_snn_res.0.5")
+
+    pp <- plot_hexbin_meta(pbmc, col = "RNA_snn_res.0.5", action = "majority")
+    pp + ggrepel::geom_label_repel(
+      data = label_df,
+      aes(x = x, y = y, label = label),
+      colour = "black",
+      label.size = NA,
+      fill = NA
+    )
+    ```
+  </Step>
+
+  <Step title="Plot gene expression in hexagon representation">
+    Visualize gene expression averaged per hexagon bin:
+
+    ```r
+    gene_id <- "CD19"
+    plot_hexbin_gene(
+      pbmc,
+      type = "logcounts",
+      gene = gene_id,
+      action = "mean",
+      xlab = "UMAP1",
+      ylab = "UMAP2",
+      title = paste0("Mean of ", gene_id)
+    )
+    ```
+  </Step>
+</Steps>
+
+## `action` parameter reference
+
+The `action` parameter in `plot_hexbin_meta()` and `plot_hexbin_gene()` controls how values are summarized within each bin:
+
+| Action | Use case |
+|---|---|
+| `"median"` | Numeric metadata (e.g., `nCount_RNA`, `percent.mt`) |
+| `"mean"` | Gene expression values |
+| `"majority"` | Factor/categorical metadata (e.g., cluster labels) |
+
+## Choosing `nbins`
+
+The `nbins` parameter in `make_hexbin()` specifies how many bins divide the x-axis range. Adjust it based on dataset size:
+
+| Dataset size | Suggested `nbins` |
+|---|---|
+| < 5,000 cells | 20–30 |
+| 5,000–20,000 cells | 30–50 |
+| > 20,000 cells | 50+ |
+
+Always check `plot_hexbin_density()` after changing `nbins` to confirm bins are not over- or under-populated.
+
+## Additional resources
+
+- [schex GitHub repository](https://github.com/SaskiaFreytag/schex)

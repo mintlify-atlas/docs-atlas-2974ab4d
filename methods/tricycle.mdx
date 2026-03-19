@@ -1,0 +1,220 @@
+---
+title: 'Cell cycle analysis with tricycle'
+description: Estimate continuous cell cycle position using tricycle's transfer-learning approach on Seurat objects.
+---
+
+This page demonstrates the use of `estimate_cycle_position` from the [tricycle](https://www.bioconductor.org/packages/release/bioc/html/tricycle.html) Bioconductor package on Seurat objects via SeuratWrappers.
+
+> *Universal prediction of cell cycle position using transfer learning*
+>
+> Shijie C. Zheng, Genevieve Stein-O'Brien, Jonathan J. Augustin, Jared Slosberg, Giovanni A. Carosso, Briana Winer, Gloria Shin, Hans T. Bjornsson, Loyal A. Goff, Kasper D. Hansen
+>
+> bioRxiv, 2021. doi: [10.1101/2021.04.06.438463](https://doi.org/10.1101/2021.04.06.438463)
+
+## Installation
+
+<Note>
+The following packages are required before proceeding:
+
+- [Seurat](https://satijalab.org/seurat/install)
+- [SeuratWrappers](https://github.com/satijalab/seurat-wrappers)
+- [tricycle](https://www.bioconductor.org/packages/release/bioc/html/tricycle.html)
+</Note>
+
+```r
+BiocManager::install('tricycle')
+```
+
+```r
+library(Seurat)
+library(SeuratWrappers)
+library(tricycle)
+```
+
+## Introduction
+
+tricycle infers a **continuous** cell cycle position for each cell, represented as an angle θ bounded between 0 and 2π. Rather than assigning cells to discrete G1/S/G2M phases, this approach captures the full spectrum of cell cycle states with higher resolution.
+
+As a rough guide to interpreting θ values:
+
+| θ range | Approximate cell cycle stage |
+|---|---|
+| ~0.5π | Start of S phase |
+| ~π | Start of G2M phase |
+| ~1.5π | Middle of M phase |
+| ~1.75π – 0.25π | G1/G0 phase |
+
+<Note>
+tricycle requires library-size-adjusted log-expression values as input. When converting from a SingleCellExperiment object, the `"logcounts"` assay is stored as the `"data"` slot in the Seurat default assay — use `slot = "data"` (the default) to ensure correct input.
+</Note>
+
+## Workflow
+
+<Steps>
+  <Step title="Load data">
+    This example uses the `neurosphere_example` dataset bundled with the tricycle package. After converting from SingleCellExperiment to Seurat, log-normalized counts are available in the `"data"` slot.
+
+    ```r
+    data(neurosphere_example, package = "tricycle")
+    neurosphere_example <- as.Seurat(neurosphere_example)
+    neurosphere_example
+    # An object of class Seurat
+    # 1500 features across 400 samples within 1 assay
+    # Active assay: RNA (1500 features, 0 variable features)
+    ```
+  </Step>
+
+  <Step title="Estimate cell cycle position">
+    `Runtricycle()` projects cells into the tricycle cell cycle embedding using the package's internal reference projection matrix, then computes θ (the cell cycle angle). Results are added to the Seurat object in two places:
+
+    - `$tricyclePosition`: continuous angle θ in `[0, 2π]` stored in cell metadata
+    - A new dimensional reduction (default name: `"tricycleEmbedding"`) with two components
+
+    ```r
+    neurosphere_example <- Runtricycle(
+      object = neurosphere_example,
+      slot = "data",
+      gname.type = "ENSEMBL",
+      species = "mouse"
+    )
+    ```
+  </Step>
+
+  <Step title="Visualize the embedding">
+    Extract the cell cycle embedding and color cells by their estimated position.
+
+    ```r
+    library(ggplot2)
+    library(cowplot)
+
+    plot.df <- FetchData(
+      object = neurosphere_example,
+      vars = c("tricycleEmbedding_1", "tricycleEmbedding_2", "tricyclePosition")
+    )
+
+    p <- tricycle:::.plot_emb_circle_scale(
+      emb.m = plot.df[, 1:2],
+      color.value = plot.df$tricyclePosition,
+      color_by = "tricyclePosition",
+      point.size = 3.5,
+      point.alpha = 0.9
+    )
+    legend <- circle_scale_legend(text.size = 5, alpha = 0.9)
+    plot_grid(p, legend, ncol = 2, rel_widths = c(1, 0.4))
+    ```
+
+    You can also color cells by `tricyclePosition` on any existing embedding (e.g. UMAP or tSNE) using `FeaturePlot()`.
+  </Step>
+
+  <Step title="Assess performance">
+    A quick way to validate tricycle is to check whether a known cell cycle marker gene oscillates as expected along θ. `Top2a` is commonly used; its expression should peak near θ = π (G2M boundary).
+
+    ```r
+    plot.df <- FetchData(
+      object = neurosphere_example,
+      vars = c("tricycleEmbedding_1", "tricycleEmbedding_2",
+               "tricyclePosition", "ENSMUSG00000020914")
+    )
+    names(plot.df)[4] <- "Top2a"
+
+    fit.l <- fit_periodic_loess(
+      neurosphere_example$tricyclePosition,
+      plot.df$Top2a,
+      plot = TRUE,
+      x_lab = "Cell cycle position θ",
+      y_lab = "log2(Top2a)",
+      fig.title = paste0("Expression of Top2a along θ (n=",
+        ncol(neurosphere_example), ")")
+    )
+    fit.l$fig + theme_bw(base_size = 14)
+    ```
+  </Step>
+
+  <Step title="Plot kernel density by cell type or condition">
+    `plot_ccposition_den()` computes a von Mises kernel density of θ conditioned on a phenotype variable, useful for comparing cell cycle distributions across cell types or experimental conditions.
+
+    ```r
+    # Cartesian coordinates
+    plot_ccposition_den(
+      neurosphere_example$tricyclePosition,
+      neurosphere_example$sample,
+      "sample",
+      bw = 10,
+      fig.title = "Kernel density of θ"
+    ) + theme_bw(base_size = 14)
+
+    # Polar coordinates
+    plot_ccposition_den(
+      neurosphere_example$tricyclePosition,
+      neurosphere_example$sample,
+      "sample",
+      type = "circular",
+      bw = 10,
+      fig.title = "Kernel density of θ"
+    ) + theme_bw(base_size = 14)
+    ```
+  </Step>
+</Steps>
+
+## Functions
+
+### `Runtricycle()`
+
+Runs `tricycle::estimate_cycle_position` on a Seurat object. Internally it calls `tricycle:::.project_cycle_space()` to project cells into the cell cycle embedding using the package's built-in reference, then `tricycle:::.getTheta()` to compute θ. Results are added to both cell metadata and a new `DimReduc` slot.
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object.
+</ParamField>
+
+<ParamField path="assay" type="string">
+  Name of the assay to use. Defaults to the active assay.
+</ParamField>
+
+<ParamField path="slot" type="string" default="data">
+  Slot within the assay to use as input. Should contain library-size-adjusted log-expression values. Defaults to `"data"`, which corresponds to the `"logcounts"` slot from a SingleCellExperiment converted via `as.Seurat()`.
+</ParamField>
+
+<ParamField path="reduction.name" type="string" default="tricycleEmbedding">
+  Name of the dimensional reduction object added to the Seurat object to store the two-dimensional cell cycle projection.
+</ParamField>
+
+<ParamField path="reduction.key" type="string" default="tricycleEmbedding_">
+  Key prefix for accessing embedding coordinates (e.g. `tricycleEmbedding_1`, `tricycleEmbedding_2`).
+</ParamField>
+
+<ParamField path="gname" type="character vector">
+  Alternative gene names to use for mapping features in `object` to genes in the tricycle reference. If `NULL` (the default), the row names of `object` are used directly.
+</ParamField>
+
+<ParamField path="gname.type" type="string" default="ENSEMBL">
+  The gene identifier type. Must be `"ENSEMBL"` or `"SYMBOL"`. Used when mapping features in `object` to the reference.
+</ParamField>
+
+<ParamField path="species" type="string" default="mouse">
+  Species of the input data. Must be `"mouse"` or `"human"`.
+</ParamField>
+
+<ParamField path="AnnotationDb" type="AnnotationDb">
+  An `AnnotationDb` object for mapping Ensembl IDs to gene symbols (used only for human data with Ensembl IDs). If not provided, `org.Hs.eg.db` is used.
+</ParamField>
+
+<ParamField path="center.pc1" type="number" default="0">
+  Center of PC1 used when computing the angle θ from the two-dimensional projection.
+</ParamField>
+
+<ParamField path="center.pc2" type="number" default="0">
+  Center of PC2 used when computing the angle θ from the two-dimensional projection.
+</ParamField>
+
+## Output added to the Seurat object
+
+| Slot | Content |
+|---|---|
+| `object$tricyclePosition` | Continuous cell cycle position θ ∈ [0, 2π] for each cell |
+| `object[[reduction.name]]` | `DimReduc` object with the two-dimensional cell cycle embedding (PC1 and PC2 of the projection) |
+
+## Performance assessment
+
+Deeper sequenced datasets will show a clearly ellipsoid pattern in the cell cycle embedding with an empty interior. As sequencing depth decreases, the radius shrinks until the interior disappears — this does not indicate that tricycle has failed. The more reliable quality check is inspecting marker gene expression (e.g. Top2a, Smc2) as a function of θ using `fit_periodic_loess()`.
+
+For more on building custom references or running tricycle outside Seurat, see the [tricycle Bioconductor page](https://www.bioconductor.org/packages/release/bioc/html/tricycle.html).

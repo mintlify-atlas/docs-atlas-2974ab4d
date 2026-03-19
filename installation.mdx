@@ -1,0 +1,179 @@
+---
+title: "Installation"
+description: "Install SeuratWrappers and the per-method dependencies required for the wrappers you plan to use."
+---
+
+## Prerequisites
+
+Before installing SeuratWrappers, make sure your environment meets the following requirements:
+
+- **R >= 3.5.0** — check with `R.version` in your R console
+- **Seurat >= 5.0.0** — install from CRAN with `install.packages("Seurat")`
+- **remotes** — used to install packages from GitHub
+
+<Note>
+SeuratWrappers wraps methods that are distributed separately. The core SeuratWrappers package is lightweight; each wrapped method requires its own package, installed independently.
+</Note>
+
+## Install SeuratWrappers
+
+<Steps>
+  <Step title="Install the remotes package">
+    If you don't already have `remotes`, install it from CRAN:
+
+    ```r
+    install.packages("remotes")
+    ```
+  </Step>
+
+  <Step title="Install SeuratWrappers from GitHub">
+    ```r
+    remotes::install_github("satijalab/seurat-wrappers")
+    ```
+
+    This installs the core SeuratWrappers package. Individual method dependencies are **not** installed automatically.
+  </Step>
+
+  <Step title="Load the package">
+    ```r
+    library(SeuratWrappers)
+    ```
+  </Step>
+</Steps>
+
+## Install method dependencies
+
+Each wrapper depends on the underlying method's R package, which must be installed separately. You only need to install the packages for the methods you plan to use.
+
+<Tip>
+If you call a wrapper function without the required dependency installed, SeuratWrappers will prompt you interactively and offer to install the missing package automatically.
+</Tip>
+
+### CRAN packages
+
+Some dependencies are available on CRAN and can be installed with `install.packages()`:
+
+```r
+# glmpca
+install.packages("glmpca")
+```
+
+### Bioconductor packages
+
+Several methods are distributed through [Bioconductor](https://bioconductor.org). Install the `BiocManager` package first, then use it to install the relevant packages:
+
+```r
+install.packages("BiocManager")
+```
+
+<CodeGroup>
+
+```r fastMNN (batchelor)
+BiocManager::install("batchelor")
+```
+
+```r CoGAPS
+BiocManager::install("CoGAPS")
+```
+
+```r tricycle
+BiocManager::install("tricycle")
+```
+
+```r miQC
+BiocManager::install("miQC")
+```
+
+</CodeGroup>
+
+### GitHub packages
+
+Many wrapped methods are only available from GitHub. Install them with `remotes::install_github()`:
+
+<CodeGroup>
+
+```r Harmony
+remotes::install_github("immunogenomics/harmony")
+```
+
+```r LIGER
+remotes::install_github("welch-lab/liger")
+```
+
+```r Monocle 3
+remotes::install_github("cole-trapnell-lab/monocle3")
+```
+
+```r Conos
+remotes::install_github("hms-dbmi/conos")
+```
+
+```r RNA Velocity
+remotes::install_github("velocyto-team/velocyto.R")
+```
+
+```r BANKSY
+remotes::install_github("prabhakarlab/Banksy")
+```
+
+```r Nebulosa
+remotes::install_github("powellgenomicslab/Nebulosa")
+```
+
+```r CIPR
+remotes::install_github("atakanekiz/CIPR-Package")
+```
+
+</CodeGroup>
+
+## Per-method dependency reference
+
+The table below lists the dependency for each wrapped method, its source, and the install command.
+
+| Method | Package | Source | Install command |
+| --- | --- | --- | --- |
+| Harmony | `harmony` | GitHub | `remotes::install_github("immunogenomics/harmony")` |
+| LIGER | `rliger` | GitHub | `remotes::install_github("welch-lab/liger")` |
+| Conos | `conos` | GitHub | `remotes::install_github("hms-dbmi/conos")` |
+| fastMNN | `batchelor` | Bioconductor | `BiocManager::install("batchelor")` |
+| scVI | Python / reticulate | — | See [scVI method page](/methods/scvi) |
+| Monocle 3 | `monocle3` | GitHub | `remotes::install_github("cole-trapnell-lab/monocle3")` |
+| RNA Velocity | `velocyto.R` | GitHub | `remotes::install_github("velocyto-team/velocyto.R")` |
+| tricycle | `tricycle` | Bioconductor | `BiocManager::install("tricycle")` |
+| ALRA | built-in | — | No additional package required |
+| GLM-PCA | `glmpca` | CRAN | `install.packages("glmpca")` |
+| PaCMAP | Python / reticulate | — | See [PaCMAP method page](/methods/pacmap) |
+| BANKSY | `Banksy` | GitHub | `remotes::install_github("prabhakarlab/Banksy")` |
+| Nebulosa | `Nebulosa` | GitHub | `remotes::install_github("powellgenomicslab/Nebulosa")` |
+| miQC | `miQC` | Bioconductor | `BiocManager::install("miQC")` |
+| CoGAPS | `CoGAPS` | Bioconductor | `BiocManager::install("CoGAPS")` |
+| CIPR | `cipr` | GitHub | `remotes::install_github("atakanekiz/CIPR-Package")` |
+| Presto | `presto` | GitHub | `remotes::install_github("immunogenomics/presto")` |
+
+<Warning>
+Some GitHub packages (such as `velocyto.R` and `conos`) have system-level dependencies, such as a C++ compiler and Boost libraries. If installation fails, check the package's README for platform-specific instructions.
+</Warning>
+
+## Verify your installation
+
+After installing, confirm that SeuratWrappers loads correctly and that the dependency for your chosen method is available:
+
+```r
+library(SeuratWrappers)
+
+# Check that a specific dependency is installed
+# Example: verify harmony is available
+requireNamespace("harmony", quietly = TRUE)
+#> [1] TRUE
+```
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Introduction" icon="book-open" href="/introduction">
+    Learn how SeuratWrappers works and which method categories are available.
+  </Card>
+  <Card title="Harmony" icon="layer-group" href="/methods/harmony">
+    Start with Harmony for fast, scalable single-cell dataset integration.
+  </Card>
+</Columns>

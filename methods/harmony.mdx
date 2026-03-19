@@ -1,0 +1,140 @@
+---
+title: "Harmony Integration"
+description: "Fast iterative dataset integration via PCA embedding correction across batches, donors, or conditions."
+---
+
+Harmony is a fast, sensitive method for integrating single-cell data by iteratively correcting PCA embeddings. It operates on an existing PCA reduction and produces a corrected low-dimensional embedding suitable for downstream clustering and visualization.
+
+<Note>
+The `RunHarmony()` function is provided directly by the **harmony** package — not by SeuratWrappers. SeuratWrappers coordinates usage but the wrapper itself ships with Harmony. You do not need SeuratWrappers to call `RunHarmony()`.
+</Note>
+
+## Citation
+
+If you use Harmony in your work, please cite:
+
+> *Fast, sensitive, and flexible integration of single cell data with Harmony*
+>
+> Ilya Korsunsky, Jean Fan, Kamil Slowikowski, Fan Zhang, Kevin Wei, Yuriy Baglaenko, Michael Brenner, Po-Ru Loh, Soumya Raychaudhuri
+>
+> bioRxiv, 2019 / Nature Methods, 2019
+>
+> doi: [10.1101/461954v2](https://www.biorxiv.org/content/10.1101/461954v2)
+
+## Installation
+
+```r
+# Install Harmony from GitHub
+remotes::install_github('immunogenomics/harmony')
+
+# Supporting packages
+install.packages('Seurat')
+remotes::install_github('satijalab/seurat-data')
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(harmony)
+    library(Seurat)
+    library(SeuratData)
+
+    InstallData("pbmcsca")
+    data("pbmcsca")
+    ```
+  </Step>
+
+  <Step title="Normalize and reduce dimensions">
+    Run standard Seurat preprocessing through PCA before calling Harmony.
+
+    ```r
+    pbmcsca <- NormalizeData(pbmcsca) %>%
+      FindVariableFeatures() %>%
+      ScaleData() %>%
+      RunPCA(verbose = FALSE)
+    ```
+  </Step>
+
+  <Step title="Run Harmony integration">
+    Harmony corrects the PCA embedding using the grouping variable you specify. The result is stored as a new `harmony` reduction.
+
+    ```r
+    pbmcsca <- RunHarmony(pbmcsca, group.by.vars = "Method")
+    ```
+  </Step>
+
+  <Step title="Downstream analysis on corrected embedding">
+    Use the `harmony` reduction for UMAP, neighbor finding, and clustering.
+
+    ```r
+    pbmcsca <- RunUMAP(pbmcsca, reduction = "harmony", dims = 1:30)
+    pbmcsca <- FindNeighbors(pbmcsca, reduction = "harmony", dims = 1:30)
+    pbmcsca <- FindClusters(pbmcsca)
+    DimPlot(pbmcsca, group.by = c("Method", "ident", "CellType"), ncol = 3)
+    ```
+  </Step>
+</Steps>
+
+## Examples
+
+### Interferon-stimulated and control PBMC
+
+```r
+InstallData("ifnb")
+data("ifnb")
+ifnb <- NormalizeData(ifnb) %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA(verbose = FALSE)
+ifnb <- RunHarmony(ifnb, group.by.vars = "stim")
+ifnb <- RunUMAP(ifnb, reduction = "harmony", dims = 1:30)
+ifnb <- FindNeighbors(ifnb, reduction = "harmony", dims = 1:30) %>% FindClusters()
+DimPlot(ifnb, group.by = c("stim", "ident", "seurat_annotations"), ncol = 3)
+```
+
+### Eight human pancreatic islet datasets
+
+```r
+InstallData("panc8")
+data("panc8")
+panc8 <- NormalizeData(panc8) %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA(verbose = FALSE)
+panc8 <- RunHarmony(panc8, group.by.vars = "replicate")
+panc8 <- RunUMAP(panc8, reduction = "harmony", dims = 1:30)
+panc8 <- FindNeighbors(panc8, reduction = "harmony", dims = 1:30) %>% FindClusters()
+DimPlot(panc8, group.by = c("replicate", "ident", "celltype"), ncol = 3)
+```
+
+## Key Parameters
+
+<ParamField path="group.by.vars" type="character" required>
+  One or more metadata column names specifying the batch or grouping variables to integrate across. For example, `"orig.ident"`, `"Method"`, or `c("donor", "batch")`.
+</ParamField>
+
+<ParamField path="dims.use" type="integer vector" default="NULL">
+  Which PCA dimensions to use. Defaults to all available dimensions in the PCA reduction.
+</ParamField>
+
+<ParamField path="theta" type="numeric" default="2">
+  Diversity clustering penalty parameter. Higher values enforce greater dataset mixing. One value per `group.by.vars` variable.
+</ParamField>
+
+<ParamField path="lambda" type="numeric" default="1">
+  Ridge regression penalty. Larger values produce more conservative correction.
+</ParamField>
+
+<ParamField path="sigma" type="numeric" default="0.1">
+  Width of soft k-means clusters. Larger values assign cells to more clusters, increasing smoothing.
+</ParamField>
+
+<ParamField path="reduction" type="character" default='pca'>
+  Name of the existing dimensional reduction to correct. Must be run before calling `RunHarmony()`.
+</ParamField>
+
+<ParamField path="reduction.save" type="character" default='harmony'>
+  Name under which the corrected embedding is stored in the Seurat object.
+</ParamField>

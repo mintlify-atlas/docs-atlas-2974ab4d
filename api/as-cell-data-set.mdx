@@ -1,0 +1,135 @@
+---
+title: "as.cell_data_set() / as.Seurat.cell_data_set()"
+description: "Convert between Seurat objects and Monocle 3 cell_data_set objects"
+---
+
+SeuratWrappers provides two-way conversion between Seurat objects and Monocle 3 `cell_data_set` objects.
+
+## as.cell_data_set()
+
+Converts a Seurat object to a Monocle 3 `cell_data_set` for trajectory analysis.
+
+### Syntax
+
+```r
+as.cell_data_set(
+  x,
+  assay = DefaultAssay(object = x),
+  reductions = AssociatedDimReducs(object = x, assay = assay),
+  default.reduction = DefaultDimReduc(object = x, assay = assay),
+  graph = paste0(assay, "_snn"),
+  group.by = NULL,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="x" type="Seurat" required>
+  A Seurat object to convert.
+</ParamField>
+
+<ParamField path="assay" type="character">
+  Assay to use. Defaults to the active default assay.
+</ParamField>
+
+<ParamField path="reductions" type="character vector">
+  Names of dimensional reductions to transfer. Defaults to all reductions associated with `assay` plus global reductions.
+</ParamField>
+
+<ParamField path="default.reduction" type="character">
+  Name of the reduction to use as the primary clustering reduction in Monocle 3. Defaults to the default DimReduc (UMAP > tSNE > PCA).
+</ParamField>
+
+<ParamField path="graph" type="character">
+  Name of the nearest-neighbor graph to transfer for clustering. Defaults to `<assay>_snn`.
+</ParamField>
+
+<ParamField path="group.by" type="character" default="NULL">
+  Metadata column to use for cell identities. If `NULL`, uses the active Seurat identities.
+</ParamField>
+
+### What gets transferred
+
+| Seurat | Monocle 3 | Notes |
+|--------|-----------|-------|
+| `Embeddings` | `reducedDims` | Names uppercased (e.g., `umap` → `UMAP`) |
+| Feature loadings | `reduce_dim_aux$gene_loadings` | Last reduction only |
+| `Stdev` | `reduce_dim_aux$prop_var_expl` | Last reduction only |
+| Seurat clusters | `clusters` slot | With nearest-neighbor graph |
+| `monocle3_clusters` / `monocle3_partitions` metadata | `clusters` slot | If present, used directly |
+
+<Warning>
+  Monocle 3 trajectory inference requires cell partitions, which Seurat does not compute. After conversion, run `cluster_cells()` on the `cell_data_set` to generate partitions before calling `learn_graph()`.
+</Warning>
+
+## as.Seurat.cell_data_set()
+
+Converts a Monocle 3 `cell_data_set` back to a Seurat object.
+
+### Syntax
+
+```r
+as.Seurat(
+  x,
+  counts = "counts",
+  data = NULL,
+  assay = "RNA",
+  project = "cell_data_set",
+  loadings = NULL,
+  clusters = NULL,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="x" type="cell_data_set" required>
+  A Monocle 3 `cell_data_set` object.
+</ParamField>
+
+<ParamField path="counts" type="character" default="counts">
+  Name of the assay in the `cell_data_set` to use as counts.
+</ParamField>
+
+<ParamField path="assay" type="character" default="RNA">
+  Name for the assay in the resulting Seurat object.
+</ParamField>
+
+<ParamField path="loadings" type="character" default="NULL">
+  Name of the reduction to transfer gene loadings into. Defaults to the first reduction containing `"pca"` (case-insensitive). Pass `NA` to suppress loadings transfer.
+</ParamField>
+
+<ParamField path="clusters" type="character" default="NULL">
+  Name of the Monocle clustering method to use for Seurat identities. Defaults to `DefaultDimReduc(object)`.
+</ParamField>
+
+### What gets transferred back
+
+| Monocle 3 | Seurat | Notes |
+|-----------|--------|-------|
+| `reduce_dim_aux$gene_loadings` | `Loadings` of `loadings` reduction | |
+| Monocle clusters | Active identity + `monocle3_clusters` metadata | |
+| Monocle partitions | `monocle3_partitions` metadata | |
+| Monocle pseudotime | `monocle3_pseudotime` metadata | |
+| Nearest-neighbor graph | `<assay>_monocle3_graph` | Converted to Seurat Graph |
+
+## Examples
+
+```r
+library(SeuratWrappers)
+remotes::install_github("cole-trapnell-lab/monocle3")
+
+# Seurat → Monocle 3
+cds <- as.cell_data_set(seurat_obj)
+cds <- cluster_cells(cds)
+cds <- learn_graph(cds)
+cds <- order_cells(cds)
+
+# Monocle 3 → Seurat
+seurat_obj <- as.Seurat(cds)
+```
+
+## See Also
+
+- [Monocle 3 method guide](/methods/monocle3)

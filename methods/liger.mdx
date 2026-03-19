@@ -1,0 +1,236 @@
+---
+title: "LIGER Integration"
+description: "Integrative non-negative matrix factorization for joint analysis of multiple single-cell datasets."
+---
+
+LIGER (Linked Inference of Genomic Experimental Relationships) uses integrative non-negative matrix factorization (iNMF) to identify shared and dataset-specific factors across multiple single-cell datasets. SeuratWrappers provides `RunOptimizeALS()` and `RunQuantileNorm()` to run LIGER directly on Seurat objects.
+
+<Warning>
+LIGER does not center data during scaling. You must pass `do.center = FALSE` to `ScaleData()` before running LIGER, and use `split.by` to scale each dataset subset independently.
+</Warning>
+
+<Note>
+Update your `rliger` package to version 0.5.0 or above before following this workflow. Install it from CRAN: `install.packages('rliger')`.
+</Note>
+
+## Citation
+
+If you use LIGER in your work, please cite:
+
+> *Single-Cell Multi-omic Integration Compares and Contrasts Features of Brain Cell Identity*
+>
+> Joshua Welch, Velina Kozareva, Ashley Ferreira, Charles Vanderburg, Carly Martin, Evan Z. Macosko
+>
+> Cell, 2019
+>
+> doi: [10.1016/j.cell.2019.05.006](https://doi.org/10.1016/j.cell.2019.05.006)
+>
+> GitHub: https://github.com/welch-lab/liger
+
+## Installation
+
+```r
+# Install rliger from CRAN
+install.packages('rliger')
+
+# Install SeuratWrappers
+remotes::install_github('satijalab/seurat-wrappers')
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(rliger)
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+
+    InstallData("pbmcsca")
+    data("pbmcsca")
+    ```
+  </Step>
+
+  <Step title="Normalize and identify variable features">
+    ```r
+    pbmcsca <- NormalizeData(pbmcsca)
+    pbmcsca <- FindVariableFeatures(pbmcsca)
+    ```
+  </Step>
+
+  <Step title="Scale data without centering">
+    LIGER requires uncentered scaled data. Use `split.by` to scale each dataset subset separately.
+
+    ```r
+    pbmcsca <- ScaleData(pbmcsca, split.by = "Method", do.center = FALSE)
+    ```
+  </Step>
+
+  <Step title="Run iNMF factorization with RunOptimizeALS">
+    Factorizes the scaled data using alternating least squares (ALS). The result is stored as the `iNMF_raw` reduction.
+
+    ```r
+    pbmcsca <- RunOptimizeALS(pbmcsca, k = 20, lambda = 5, split.by = "Method")
+    ```
+  </Step>
+
+  <Step title="Quantile normalize the joint embeddings">
+    Aligns factor loadings across datasets via quantile normalization, producing the final integrated `iNMF` reduction.
+
+    ```r
+    pbmcsca <- RunQuantileNorm(pbmcsca, split.by = "Method")
+    ```
+  </Step>
+
+  <Step title="Cluster and visualize">
+    Optionally run Louvain clustering on the integrated embedding, then compute UMAP.
+
+    ```r
+    pbmcsca <- FindNeighbors(pbmcsca, reduction = "iNMF", dims = 1:20)
+    pbmcsca <- FindClusters(pbmcsca, resolution = 0.3)
+    pbmcsca <- RunUMAP(pbmcsca, dims = 1:ncol(pbmcsca[["iNMF"]]), reduction = "iNMF")
+    DimPlot(pbmcsca, group.by = c("Method", "ident", "CellType"), ncol = 3)
+    ```
+  </Step>
+</Steps>
+
+## Examples
+
+### Interferon-stimulated and control PBMC
+
+```r
+InstallData("ifnb")
+data("ifnb")
+ifnb <- NormalizeData(ifnb)
+ifnb <- FindVariableFeatures(ifnb)
+ifnb <- ScaleData(ifnb, split.by = "stim", do.center = FALSE)
+ifnb <- RunOptimizeALS(ifnb, k = 20, lambda = 5, split.by = "stim")
+ifnb <- RunQuantileNorm(ifnb, split.by = "stim")
+ifnb <- FindNeighbors(ifnb, reduction = "iNMF", dims = 1:20)
+ifnb <- FindClusters(ifnb, resolution = 0.55)
+ifnb <- RunUMAP(ifnb, dims = 1:ncol(ifnb[["iNMF"]]), reduction = "iNMF")
+DimPlot(ifnb, group.by = c("stim", "ident", "seurat_annotations"), ncol = 3)
+```
+
+### Eight human pancreatic islet datasets
+
+```r
+InstallData("panc8")
+data("panc8")
+panc8 <- NormalizeData(panc8)
+panc8 <- FindVariableFeatures(panc8)
+panc8 <- ScaleData(panc8, split.by = "replicate", do.center = FALSE)
+panc8 <- RunOptimizeALS(panc8, k = 20, lambda = 5, split.by = "replicate")
+panc8 <- RunQuantileNorm(panc8, split.by = "replicate")
+panc8 <- FindNeighbors(panc8, reduction = "iNMF", dims = 1:20)
+panc8 <- FindClusters(panc8, resolution = 0.4)
+panc8 <- RunUMAP(panc8, dims = 1:ncol(panc8[["iNMF"]]), reduction = "iNMF")
+DimPlot(panc8, group.by = c("replicate", "ident", "celltype"), ncol = 3)
+```
+
+## Functions
+
+### RunOptimizeALS
+
+Runs iNMF factorization via alternating least squares on a merged Seurat object. Stores per-dataset factor loading matrices in the `tool` slot (accessible with `Tool()`), and combined cell embeddings in the `iNMF_raw` reduction by default.
+
+<ParamField path="object" type="Seurat" required>
+  A merged Seurat object. Data must be scaled (without centering) before calling this function.
+</ParamField>
+
+<ParamField path="k" type="integer" required>
+  Number of factors (latent dimensions) to compute.
+</ParamField>
+
+<ParamField path="split.by" type="character" default='orig.ident'>
+  Metadata column used to split cells into per-dataset subsets for factorization.
+</ParamField>
+
+<ParamField path="lambda" type="numeric" default="5">
+  Regularization parameter. Controls the weight of the dataset-specific penalty term. Higher values enforce greater similarity between shared and dataset-specific factors.
+</ParamField>
+
+<ParamField path="thresh" type="numeric" default="1e-6">
+  Convergence threshold. Optimization stops when the objective improvement falls below this value.
+</ParamField>
+
+<ParamField path="max.iters" type="integer" default="30">
+  Maximum number of ALS iterations.
+</ParamField>
+
+<ParamField path="nrep" type="integer" default="1">
+  Number of factorization restarts. The run with the lowest final objective is retained.
+</ParamField>
+
+<ParamField path="rand.seed" type="integer" default="1">
+  Random seed for reproducibility.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='iNMF_raw'>
+  Name under which the raw iNMF embedding is stored.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='riNMF_'>
+  Key prefix for the raw iNMF reduction dimensions.
+</ParamField>
+
+### RunQuantileNorm
+
+Aligns iNMF factor loadings across datasets using quantile normalization. Produces the final integrated embedding stored in the `iNMF` reduction by default. Also assigns cluster identities to cells via `Idents()`.
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object after running `RunOptimizeALS()`.
+</ParamField>
+
+<ParamField path="split.by" type="character" default='orig.ident'>
+  Metadata column identifying which dataset each cell belongs to.
+</ParamField>
+
+<ParamField path="reduction" type="character" default='iNMF_raw'>
+  Name of the raw iNMF reduction to normalize.
+</ParamField>
+
+<ParamField path="quantiles" type="integer" default="50">
+  Number of quantile bins used in the normalization procedure.
+</ParamField>
+
+<ParamField path="ref_dataset" type="character" default="NULL">
+  Name of the reference dataset for alignment. Defaults to the largest dataset.
+</ParamField>
+
+<ParamField path="min_cells" type="integer" default="20">
+  Minimum number of cells required in a cluster for it to be used in alignment.
+</ParamField>
+
+<ParamField path="knn_k" type="integer" default="20">
+  Number of nearest neighbors used in the kNN graph for quantile normalization.
+</ParamField>
+
+<ParamField path="do.center" type="logical" default="FALSE">
+  Whether to center embeddings before normalization. Should match the centering used in `ScaleData()`.
+</ParamField>
+
+<ParamField path="max_sample" type="integer" default="1000">
+  Maximum number of cells to sample per dataset when computing quantiles.
+</ParamField>
+
+<ParamField path="eps" type="numeric" default="0.9">
+  Epsilon parameter for approximate nearest neighbor search.
+</ParamField>
+
+<ParamField path="refine.knn" type="logical" default="TRUE">
+  Whether to refine the kNN graph after initial construction.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='iNMF'>
+  Name under which the normalized embedding is stored.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='iNMF_'>
+  Key prefix for the normalized iNMF reduction dimensions.
+</ParamField>
+
+## Deprecated Functions
+
+`RunSNF()` and `RunQuantileAlignSNF()` are deprecated. Both now redirect to `RunQuantileNorm()`. Use `RunQuantileNorm()` directly in all new workflows.

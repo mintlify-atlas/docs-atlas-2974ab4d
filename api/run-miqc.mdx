@@ -1,0 +1,143 @@
+---
+title: "RunMiQC() / PlotMiQC()"
+description: "Probabilistic quality control for single-cell datasets using mixture models"
+---
+
+SeuratWrappers provides two functions for miQC-based quality control:
+
+- **`RunMiQC()`** — Fits a mixture model and marks cells as compromised
+- **`PlotMiQC()`** — Visualizes the fitted model and posterior probabilities
+
+## RunMiQC()
+
+### Syntax
+
+```r
+RunMiQC(
+  object,
+  percent.mt = "percent.mt",
+  nFeature_RNA = "nFeature_RNA",
+  posterior.cutoff = 0.75,
+  model.type = "linear",
+  model.slot = "flexmix_model",
+  verbose = TRUE,
+  backup.option = "percentile",
+  backup.percentile = 0.99,
+  backup.percent = 5,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object with mitochondrial percentage and feature count metadata.
+</ParamField>
+
+<ParamField path="percent.mt" type="character" default="percent.mt">
+  Name of the metadata column containing percent mitochondrial reads.
+</ParamField>
+
+<ParamField path="nFeature_RNA" type="character" default="nFeature_RNA">
+  Name of the metadata column containing the number of detected features.
+</ParamField>
+
+<ParamField path="posterior.cutoff" type="numeric" default="0.75">
+  Cells with posterior probability of being compromised above this threshold are marked for removal.
+</ParamField>
+
+<ParamField path="model.type" type="character" default="linear">
+  Type of regression model for the mixture components. One of `"linear"`, `"spline"`, or `"polynomial"`.
+</ParamField>
+
+<ParamField path="model.slot" type="character" default="flexmix_model">
+  Name of the `Misc` slot in which the fitted `flexmix` model is stored.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Print progress messages.
+</ParamField>
+
+<ParamField path="backup.option" type="character" default="percentile">
+  Fallback strategy when the mixture model cannot be fitted. One of:
+  - `"percentile"` — filter by `backup.percentile`
+  - `"percent"` — filter by `backup.percent` hard cutoff
+  - `"pass"` — return the object without filtering
+  - `"halt"` — raise an error
+</ParamField>
+
+<ParamField path="backup.percentile" type="numeric" default="0.99">
+  Percentile cutoff for the `"percentile"` backup option.
+</ParamField>
+
+<ParamField path="backup.percent" type="numeric" default="5">
+  Hard percent mitochondrial cutoff for the `"percent"` backup option.
+</ParamField>
+
+### Returns
+
+A Seurat object with two new metadata columns:
+- `miQC.probability` — posterior probability of each cell being compromised
+- `miQC.keep` — `"keep"` or `"discard"` decision per cell
+
+The fitted flexmix model is stored in `Misc(object, model.slot)`.
+
+## PlotMiQC()
+
+### Syntax
+
+```r
+PlotMiQC(
+  seurat_object,
+  percent.mt = "percent.mt",
+  nFeature_RNA = "nFeature_RNA",
+  model.slot = "flexmix_model",
+  color.by = "miQC.probability"
+)
+```
+
+### Parameters
+
+<ParamField path="seurat_object" type="Seurat" required>
+  A Seurat object that has already been processed with `RunMiQC()`.
+</ParamField>
+
+<ParamField path="percent.mt" type="character" default="percent.mt">
+  Metadata column name for mitochondrial percentage.
+</ParamField>
+
+<ParamField path="nFeature_RNA" type="character" default="nFeature_RNA">
+  Metadata column name for number of features.
+</ParamField>
+
+<ParamField path="model.slot" type="character" default="flexmix_model">
+  Name of the Misc slot containing the fitted flexmix model.
+</ParamField>
+
+<ParamField path="color.by" type="character" default="miQC.probability">
+  Metadata column to use for coloring points in the plot.
+</ParamField>
+
+## Examples
+
+```r
+library(SeuratWrappers)
+install.packages("flexmix")
+BiocManager::install("miQC")
+
+# Add mitochondrial percentage
+object[["percent.mt"]] <- PercentageFeatureSet(object, pattern = "^MT-")
+
+# Run miQC
+object <- RunMiQC(object, percent.mt = "percent.mt", posterior.cutoff = 0.75)
+
+# Visualize
+PlotMiQC(object)
+
+# Filter cells
+object <- subset(object, miQC.keep == "keep")
+```
+
+## See Also
+
+- [miQC method guide](/methods/miqc)

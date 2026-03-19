@@ -1,0 +1,130 @@
+---
+title: "RunFastMNN() / FastMNNIntegration()"
+description: "Mutual nearest neighbor batch correction using the batchelor package"
+---
+
+SeuratWrappers provides two fastMNN integration functions:
+
+- **`RunFastMNN()`** — For Seurat v4-style workflows using a list of Seurat objects
+- **`FastMNNIntegration()`** — For Seurat v5-style workflows using `IntegrateLayers()`
+
+## RunFastMNN()
+
+### Syntax
+
+```r
+RunFastMNN(
+  object.list,
+  assay = NULL,
+  features = 2000,
+  reduction.name = "mnn",
+  reduction.key = "mnn_",
+  reconstructed.assay = "mnn.reconstructed",
+  verbose = TRUE,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="object.list" type="list" required>
+  A list of two or more Seurat objects to integrate.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use for integration. Defaults to the active default assay of the first object.
+</ParamField>
+
+<ParamField path="features" type="integer or character vector" default="2000">
+  If an integer, selects that many integration features via `SelectIntegrationFeatures()`. If a character vector, uses those specific features.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default="mnn">
+  Name for the MNN-corrected embedding stored as a DimReduc object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="mnn_">
+  Column name prefix for the MNN embedding dimensions.
+</ParamField>
+
+<ParamField path="reconstructed.assay" type="character" default="mnn.reconstructed">
+  Name of the assay storing the batch-corrected gene expression matrix.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Print progress messages.
+</ParamField>
+
+<ParamField path="..." type="any">
+  Additional parameters passed to `batchelor::fastMNN()` (e.g., `k` for number of nearest neighbors).
+</ParamField>
+
+### Returns
+
+A merged Seurat object with:
+- A DimReduc under `reduction.name` containing MNN-corrected embeddings
+- A new assay under `reconstructed.assay` with batch-corrected expression values
+- Integration metadata stored in the `Tool` slot
+
+## FastMNNIntegration()
+
+For use with Seurat v5's `IntegrateLayers()` function.
+
+### Syntax
+
+```r
+FastMNNIntegration(
+  object,
+  assay = NULL,
+  orig = NULL,
+  groups = NULL,
+  layers = NULL,
+  scale.layer = NULL,
+  features = 2000,
+  new.reduction = "integrated.mnn",
+  reduction.key = "mnn_",
+  reconstructed.assay = "mnn.reconstructed",
+  verbose = TRUE,
+  ...
+)
+```
+
+### Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat v5 object with split layers (one per batch).
+</ParamField>
+
+<ParamField path="features" type="integer or character vector" default="2000">
+  Number of integration features or a character vector of specific features.
+</ParamField>
+
+<ParamField path="new.reduction" type="character" default="integrated.mnn">
+  Name for the integrated reduction.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default="mnn_">
+  Prefix for embedding dimension names.
+</ParamField>
+
+## Examples
+
+```r
+library(SeuratWrappers)
+BiocManager::install("batchelor")
+
+# Seurat v4 style
+object <- RunFastMNN(object.list = SplitObject(merged, split.by = "batch"))
+
+# Seurat v5 style
+object <- IntegrateLayers(
+  object = merged,
+  method = FastMNNIntegration,
+  new.reduction = "integrated.mnn",
+  verbose = FALSE
+)
+```
+
+## See Also
+
+- [fastMNN method guide](/methods/fast-mnn)

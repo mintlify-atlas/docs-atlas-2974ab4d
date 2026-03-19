@@ -1,0 +1,137 @@
+---
+title: "Alevin Count Import"
+description: "Import alevin RNA quantification output into Seurat as a count matrix for downstream single-cell analysis"
+---
+
+Alevin is a tool within the Salmon ecosystem for quantifying gene abundances from droplet-based scRNA-seq data. `ReadAlevin()` wraps `tximport` to load alevin output files directly into a Seurat-compatible count matrix, with optional support for genomic range metadata via `tximeta`.
+
+<Note>
+**Citation:** Srivastava et al. (2019) *Alevin efficiently estimates accurate gene abundances from dscRNA-seq data.* Genome Biology, 20(1):65. doi: [10.1186/s13059-019-1670-y](https://doi.org/10.1186/s13059-019-1670-y)
+
+**Source:** [COMBINE-lab/salmon](https://github.com/COMBINE-lab/salmon) (GitHub)
+</Note>
+
+## Installation
+
+```r
+# Required
+BiocManager::install(c('tximport', 'fishpond'))
+
+# Optional: for genomic range metadata
+BiocManager::install('tximeta')
+```
+
+## Key Function
+
+**`ReadAlevin()`** — Reads the `quants_mat.gz` file produced by alevin and returns a Seurat object with the count matrix populated.
+
+## How It Works
+
+`ReadAlevin()` calls `tximport` (or `tximeta` when `getMeta = TRUE`) to parse alevin's compressed output into a gene-by-cell count matrix. The matrix is then passed to `CreateSeuratObject`. Optionally, `meanAndVariance = TRUE` stores bootstrapped mean estimates in the `counts` slot and variance estimates in the `data` slot.
+
+## ReadAlevin Parameters
+
+<ParamField path="file" type="character" required>
+  Path to the `quants_mat.gz` file within the alevin output directory. This file is located at `<alevin_out>/alevin/quants_mat.gz`.
+</ParamField>
+
+<ParamField path="getMeta" type="logical" default="FALSE">
+  If `TRUE`, uses `tximeta` to programmatically fetch genomic range information for each gene. Range data is stored in the `meta.features` slot under columns `chr`, `start`, and `end`. Requires the `tximeta` package.
+</ParamField>
+
+<ParamField path="meanAndVariance" type="logical" default="FALSE">
+  If `TRUE`, retrieves bootstrapped mean and variance estimates from the alevin output instead of point estimates. Mean counts are stored in the `counts` slot; variance estimates are stored in the `data` slot.
+</ParamField>
+
+<ParamField path="..." type="extra arguments">
+  Additional arguments passed through to `tximport`. For example, `alevinArgs = list(filterBarcodes = TRUE)` activates alevin's internal barcode filtering.
+</ParamField>
+
+## Workflow
+
+<Steps>
+  <Step title="Run alevin">
+    Run alevin externally to produce quantification output. The output directory will contain an `alevin/` subdirectory with `quants_mat.gz`.
+
+    ```bash
+    salmon alevin \
+      -l ISR \
+      --index /path/to/index \
+      -1 read1.fastq.gz \
+      -2 read2.fastq.gz \
+      --chromiumV3 \
+      -p 8 \
+      --tgMap txp2gene.tsv \
+      -o alevin_out
+    ```
+  </Step>
+
+  <Step title="Import counts into Seurat">
+    ```r
+    library(SeuratWrappers)
+    library(tximport)
+
+    pbmc <- ReadAlevin("~/alevin_out/alevin/quants_mat.gz")
+    ```
+
+    `ReadAlevin` returns a fully constructed Seurat object ready for downstream processing.
+  </Step>
+
+  <Step title="Standard Seurat analysis">
+    The returned object can be used directly with the standard Seurat workflow:
+
+    ```r
+    pbmc <- NormalizeData(pbmc)
+    pbmc <- FindVariableFeatures(pbmc)
+    pbmc <- ScaleData(pbmc)
+    pbmc <- RunPCA(pbmc)
+    pbmc <- FindNeighbors(pbmc, dims = 1:10)
+    pbmc <- FindClusters(pbmc)
+    pbmc <- RunUMAP(pbmc, dims = 1:10)
+    DimPlot(pbmc)
+    ```
+  </Step>
+</Steps>
+
+## Advanced Options
+
+### Barcode filtering
+
+Pass alevin-specific arguments through `...` to `tximport`:
+
+```r
+pbmc <- ReadAlevin(
+  "~/alevin_out/alevin/quants_mat.gz",
+  alevinArgs = list(filterBarcodes = TRUE)
+)
+```
+
+### Mean and variance estimates
+
+For bootstrap-based uncertainty quantification, retrieve mean and variance estimates:
+
+```r
+pbmc <- ReadAlevin(
+  "~/alevin_out/alevin/quants_mat.gz",
+  meanAndVariance = TRUE
+)
+# counts slot contains bootstrapped mean expression
+# data slot contains bootstrapped variance
+```
+
+### Genomic range metadata
+
+Attach chromosomal position information to the feature metadata:
+
+```r
+pbmc <- ReadAlevin(
+  "~/alevin_out/alevin/quants_mat.gz",
+  getMeta = TRUE
+)
+# Accesses chr, start, end from the RNA assay meta.features
+head(pbmc[["RNA"]][[]])
+```
+
+<Note>
+`getMeta = TRUE` requires the `tximeta` Bioconductor package. If `tximeta` is not installed, `ReadAlevin` will stop with an informative error.
+</Note>

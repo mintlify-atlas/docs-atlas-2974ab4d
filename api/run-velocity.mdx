@@ -1,0 +1,117 @@
+---
+title: "RunVelocity()"
+description: "Estimate RNA velocity from spliced and unspliced count matrices"
+---
+
+`RunVelocity()` estimates RNA velocity by comparing spliced and unspliced RNA counts, storing the result in the Seurat object's `Tool` slot for downstream visualization.
+
+## Syntax
+
+```r
+RunVelocity(
+  object,
+  spliced = "spliced",
+  unspliced = "unspliced",
+  ambiguous = NULL,
+  spliced.average = 0.2,
+  unspliced.average = 0.05,
+  reduction = "pca",
+  group.by = "ident",
+  cells = NULL,
+  graph = NULL,
+  ncores = 1,
+  verbose = TRUE,
+  ...
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A Seurat object with spliced and unspliced assays loaded (e.g., via `ReadVelocity()` + `as.Seurat()`).
+</ParamField>
+
+<ParamField path="spliced" type="character" default="spliced">
+  Name of the assay containing spliced RNA counts.
+</ParamField>
+
+<ParamField path="unspliced" type="character" default="unspliced">
+  Name of the assay containing unspliced RNA counts.
+</ParamField>
+
+<ParamField path="ambiguous" type="character" default="NULL">
+  Optional name of the assay containing ambiguous RNA counts.
+</ParamField>
+
+<ParamField path="spliced.average" type="numeric" default="0.2">
+  Minimum required average expression in the spliced matrix for a gene to be included.
+</ParamField>
+
+<ParamField path="unspliced.average" type="numeric" default="0.05">
+  Minimum required average expression in the unspliced matrix for a gene to be included.
+</ParamField>
+
+<ParamField path="reduction" type="character" default="pca">
+  Name of the reduction to use for computing the embedding distance matrix.
+</ParamField>
+
+<ParamField path="group.by" type="character" default="ident">
+  Metadata column to use for grouping cells when filtering genes.
+</ParamField>
+
+<ParamField path="cells" type="character vector" default="NULL">
+  Specific cells to include. Defaults to all cells.
+</ParamField>
+
+<ParamField path="graph" type="character" default="NULL">
+  Name of a nearest-neighbor graph to use. If `NULL`, one is computed from the reduction.
+</ParamField>
+
+<ParamField path="ncores" type="integer" default="1">
+  Number of CPU cores for parallel computation.
+</ParamField>
+
+<ParamField path="..." type="any">
+  Additional parameters passed to `velocyto.R::gene.relative.velocity.estimates()`.
+</ParamField>
+
+## Returns
+
+A Seurat object with velocity estimates stored in `Tool(object)`. Use `velocyto.R::show.velocity.on.embedding.cor()` to visualize the velocity field on a 2D embedding.
+
+## Examples
+
+```r
+library(SeuratWrappers)
+remotes::install_github("velocyto-team/velocyto.R")
+
+# Read velocity data from loom file
+ldat <- ReadVelocity(file = "sample.loom")
+object <- as.Seurat(ldat)
+
+# Preprocess and run velocity
+DefaultAssay(object) <- "spliced"
+object <- SCTransform(object, assay = "spliced")
+object <- RunPCA(object)
+object <- RunVelocity(
+  object = object,
+  reduction = "pca",
+  ncores = 8,
+  verbose = TRUE
+)
+
+# Visualize
+ident.colors <- setNames(palette(), levels(Idents(object)))
+velocyto.R::show.velocity.on.embedding.cor(
+  emb = Embeddings(object, reduction = "umap"),
+  vel = Tool(object = object, slot = "RunVelocity"),
+  n = 200,
+  scale = "sqrt",
+  cell.colors = ident.colors[Idents(object)]
+)
+```
+
+## See Also
+
+- [`ReadVelocity()`](/api/read-velocity)
+- [RNA Velocity method guide](/methods/velocity)

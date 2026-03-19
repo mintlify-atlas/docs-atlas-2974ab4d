@@ -1,0 +1,127 @@
+---
+title: "GLM-PCA"
+description: "Generalized linear model-based PCA for count data that avoids normalization artifacts in scRNA-seq dimensionality reduction."
+---
+
+GLM-PCA applies a generalized linear model framework to perform dimensionality reduction directly on raw count data. Traditional PCA requires normalized and log-transformed counts, which can introduce artifacts — particularly the mean-variance relationship present in sequencing data. GLM-PCA avoids this by modeling counts under a Poisson or negative binomial likelihood.
+
+## Reference
+
+Townes, F. W., Hicks, S. C., Aryee, M. J., & Irizarry, R. A. (2019). *Feature selection and dimension reduction for single-cell RNA-Seq based on a multinomial model.* Genome Biology. https://doi.org/10.1186/s13059-019-1861-6
+
+Source: [willtownes/glmpca](https://github.com/willtownes/glmpca) · [CRAN](https://cran.r-project.org/web/packages/glmpca/index.html)
+
+## Installation
+
+<Note>
+  The `glmpca` package must be installed before using `RunGLMPCA()`. It is available on both CRAN and GitHub.
+</Note>
+
+```r
+# Install from CRAN
+install.packages("glmpca")
+
+# Or install the development version from GitHub
+remotes::install_github("willtownes/glmpca")
+```
+
+For deviance-based feature selection (recommended for choosing informative genes prior to GLM-PCA), install `scry`:
+
+```r
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install("scry")
+```
+
+## Why GLM-PCA
+
+Conventional scRNA-seq workflows normalize raw counts and apply a log transformation before PCA. This pipeline:
+
+- Distorts the mean-variance relationship of count data.
+- Can inflate the contribution of lowly-expressed genes.
+- Introduces a systematic bias when counts are sparse.
+
+GLM-PCA operates directly on raw counts using a Poisson model by default (or negative binomial), properly accounting for the discrete, overdispersed nature of sequencing data.
+
+## Key function
+
+`RunGLMPCA()` — Runs GLM-PCA on a Seurat object and stores the result as a `DimReduc` object. It uses the `counts` slot of the specified assay as input.
+
+## Example
+
+```r
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+library(glmpca)
+library(scry)
+
+InstallData("pbmc3k")
+data("pbmc3k")
+
+# Select top 2000 genes by deviance (captures the most variation in counts)
+m <- GetAssayData(pbmc3k, slot = "counts", assay = "RNA")
+devs <- scry::devianceFeatureSelection(m)
+dev_ranked_genes <- rownames(pbmc3k)[order(devs, decreasing = TRUE)]
+topdev <- head(dev_ranked_genes, 2000)
+
+# Run GLM-PCA with 10 dimensions
+# Note: raw counts from the counts slot are used — do not normalize beforehand
+ndims <- 10
+pbmc3k <- RunGLMPCA(pbmc3k, features = topdev, L = ndims)
+
+# Build neighbor graph and cluster using GLM-PCA embedding
+pbmc3k <- FindNeighbors(pbmc3k, reduction = "glmpca", dims = 1:ndims, verbose = FALSE)
+pbmc3k <- FindClusters(pbmc3k, verbose = FALSE)
+
+# Run UMAP for visualization using GLM-PCA as input
+pbmc3k <- RunUMAP(pbmc3k, reduction = "glmpca", dims = 1:ndims, verbose = FALSE)
+```
+
+### Visualize results
+
+```r
+# Cluster overview
+DimPlot(pbmc3k)
+
+# Compare clusters to original annotations
+with(pbmc3k[[]], table(seurat_annotations, seurat_clusters))
+
+# Feature expression (normalize RNA assay for display purposes only)
+pbmc3k <- NormalizeData(pbmc3k, verbose = FALSE)
+features.plot <- c("CD3D", "MS4A1", "CD8A", "GZMK", "GZMB", "FCGR3A")
+FeaturePlot(pbmc3k, features.plot, ncol = 2)
+```
+
+## Parameters
+
+<ParamField path="object" type="Seurat">
+  A Seurat object. Must contain raw counts in the `counts` slot of the target assay.
+</ParamField>
+
+<ParamField path="L" type="integer" default="5">
+  Number of dimensions (latent factors) to return.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Features to use. Defaults to the variable features identified by `FindVariableFeatures()`. Providing a curated list (e.g., top deviance genes) is recommended for best results.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the default assay of the Seurat object.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='glmpca'>
+  Name under which the resulting `DimReduc` object is stored in the Seurat object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='GLMPC_'>
+  Prefix for the column names of the GLM-PCA embedding dimensions.
+</ParamField>
+
+<ParamField path="..." type="">
+  Additional arguments passed directly to `glmpca::glmpca()`. Use this to set the `fam` argument (e.g., `fam = "nb"` for negative binomial) or other model options.
+</ParamField>
+
+<Note>
+  GLM-PCA reads from the `counts` slot, not the `data` (normalized) slot. Do not run `NormalizeData()` before `RunGLMPCA()` — the normalization is handled implicitly by the model.
+</Note>

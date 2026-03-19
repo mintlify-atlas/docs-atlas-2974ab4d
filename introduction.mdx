@@ -1,0 +1,115 @@
+---
+title: "Introduction"
+description: "SeuratWrappers is a curated collection of community-provided extensions that bring cutting-edge single-cell analysis methods into the Seurat ecosystem."
+---
+
+SeuratWrappers is a collection of community-provided methods and extensions for [Seurat](https://satijalab.org/seurat/), curated by the Satija Lab at the New York Genome Center (NYGC). These integrations provide functionality not yet available in core Seurat and can be updated independently and more frequently — allowing the community to rapidly incorporate newly published single-cell analysis methods without waiting for a Seurat release.
+
+<Columns cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install SeuratWrappers and per-method dependencies.
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/satijalab/seurat-wrappers">
+    Browse source code, open issues, and contribute new methods.
+  </Card>
+</Columns>
+
+## Why SeuratWrappers exists
+
+Seurat is a widely used framework for single-cell RNA sequencing (scRNA-seq) analysis. Its core package provides a stable, well-tested API for common operations: normalization, dimensionality reduction, clustering, and visualization. However, the single-cell field moves quickly. New methods for batch correction, trajectory inference, imputation, and spatial analysis are published continuously.
+
+SeuratWrappers bridges this gap by:
+
+- **Extending Seurat** with methods that are valuable but outside the scope of the core package
+- **Decoupling release cycles** so individual wrappers can be updated independently of Seurat itself
+- **Centralizing community contributions** into a single, discoverable package maintained under consistent conventions
+
+## How the wrappers work
+
+Each wrapper follows a consistent pattern. Wrapper functions accept Seurat objects as their primary input, call the underlying method's native API, and return results in a Seurat-compatible format — either modifying the Seurat object in place or returning a modified copy.
+
+For example, calling `RunHarmony()` on a Seurat object passes the PCA embeddings to the Harmony algorithm and stores the corrected embeddings back as a new dimensional reduction in the same object. You continue to use standard Seurat functions (`FindNeighbors()`, `RunUMAP()`, etc.) on the result.
+
+```r
+library(Seurat)
+library(SeuratWrappers)
+
+# Run Harmony integration — input and output are Seurat objects
+obj <- RunHarmony(object = obj, group.by.vars = "batch")
+
+# Downstream Seurat steps work unchanged
+obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30)
+obj <- FindClusters(obj)
+```
+
+When the underlying method returns a non-Seurat object (such as Monocle 3's `cell_data_set`), SeuratWrappers provides conversion functions like `as.cell_data_set()` and `as.Seurat()` to move between representations.
+
+## Method categories
+
+SeuratWrappers organizes methods into five broad categories:
+
+### Integration
+
+Batch correction and multi-dataset integration methods that align cells from different samples, donors, or technologies.
+
+| Method | Description |
+| --- | --- |
+| [Harmony](/methods/harmony) | Iterative correction of PCA embeddings; fast and scalable |
+| [LIGER](/methods/liger) | Integrative non-negative matrix factorization |
+| [Conos](/methods/conos) | Joint graph-based integration across datasets |
+| [fastMNN](/methods/fast-mnn) | Mutual nearest-neighbor batch correction via batchelor |
+| [scVI](/methods/scvi) | Deep generative model for single-cell integration |
+
+### Trajectory analysis
+
+Methods that infer developmental or dynamic relationships between cells and order them along pseudotime.
+
+| Method | Description |
+| --- | --- |
+| [Monocle 3](/methods/monocle3) | Principal graph-based trajectory inference and pseudotime |
+| [RNA Velocity](/methods/velocity) | Transcriptional dynamics from spliced/unspliced RNA ratios |
+| [tricycle](/methods/tricycle) | Cell cycle position estimation |
+
+### Dimensionality reduction and imputation
+
+Alternative methods for embedding cells in low-dimensional space and recovering signal from sparse count matrices.
+
+| Method | Description |
+| --- | --- |
+| [ALRA](/methods/alra) | Zero-preserving imputation via low-rank approximation |
+| [GLM-PCA](/methods/glmpca) | PCA for count data using generalized linear models |
+| [PaCMAP](/methods/pacmap) | Pairwise-controlled manifold approximation |
+
+### Spatial and visualization
+
+Methods for spatially resolved transcriptomics and enhanced visualization of single-cell data.
+
+| Method | Description |
+| --- | --- |
+| [BANKSY](/methods/banksy) | Spatial clustering incorporating cell neighborhood context |
+| [Nebulosa](/methods/nebulosa) | Kernel density estimation for gene expression visualization |
+| [schex](/methods/schex) | Hexagonal binning for large single-cell datasets |
+
+### Quality control and utilities
+
+Tools for filtering low-quality cells, importing data, running differential expression, and exporting results.
+
+| Method | Description |
+| --- | --- |
+| [miQC](/methods/miqc) | Probabilistic QC using mixture models |
+| [CoGAPS](/methods/cogaps) | Non-negative matrix factorization for pattern discovery |
+| [CIPR](/methods/cipr) | Cell identity prediction using reference profiles |
+| [Presto](/methods/presto) | Fast Wilcoxon test for differential expression |
+| [alevin](/methods/alevin) | Import salmon/alevin quantification into Seurat |
+| [Cell Browser](/methods/cellbrowser) | Export Seurat objects for UCSC Cell Browser |
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install SeuratWrappers and the dependencies for each method you plan to use.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/run-alra">
+    Browse the full function reference with parameters and return types.
+  </Card>
+</Columns>

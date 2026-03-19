@@ -1,0 +1,230 @@
+---
+title: "fastMNN Batch Correction"
+description: "Mutual nearest neighbors batch correction for single-cell RNA-seq data via the Bioconductor batchelor package."
+---
+
+fastMNN identifies mutual nearest neighbors (MNNs) between datasets in a shared low-dimensional space and uses them to estimate and remove batch effects. SeuratWrappers provides two functions: `RunFastMNN()` for Seurat v4 workflows (operating on a list of Seurat objects), and `FastMNNIntegration()` for Seurat v5 workflows (used via `IntegrateLayers()`).
+
+## Citation
+
+If you use fastMNN in your work, please cite:
+
+> *Batch effects in single-cell RNA-sequencing data are corrected by matching mutual nearest neighbors*
+>
+> Laleh Haghverdi, Aaron T L Lun, Michael D Morgan & John C Marioni
+>
+> Nature Biotechnology, 2018
+>
+> doi: [10.1038/nbt.4091](https://doi.org/10.1038/nbt.4091)
+>
+> Bioconductor: https://bioconductor.org/packages/release/bioc/html/batchelor.html
+
+## Installation
+
+```r
+# Install batchelor from Bioconductor
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("batchelor")
+
+# Install SeuratWrappers
+remotes::install_github('satijalab/seurat-wrappers')
+```
+
+## Seurat v4: RunFastMNN
+
+`RunFastMNN()` takes a list of Seurat objects and returns a single merged Seurat object with a corrected MNN embedding.
+
+### Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+
+    InstallData("pbmcsca")
+    data("pbmcsca")
+    ```
+  </Step>
+
+  <Step title="Normalize and find variable features">
+    ```r
+    pbmcsca <- NormalizeData(pbmcsca)
+    pbmcsca <- FindVariableFeatures(pbmcsca)
+    ```
+  </Step>
+
+  <Step title="Run fastMNN on split objects">
+    Split the merged object by batch variable and pass the list to `RunFastMNN()`. The function selects integration features, converts to SingleCellExperiment internally, and returns the merged object with an `mnn` reduction.
+
+    ```r
+    pbmcsca <- RunFastMNN(
+      object.list = SplitObject(pbmcsca, split.by = "Method")
+    )
+    ```
+  </Step>
+
+  <Step title="Downstream analysis">
+    Use the `mnn` reduction for UMAP, neighbor graph, and clustering.
+
+    ```r
+    pbmcsca <- RunUMAP(pbmcsca, reduction = "mnn", dims = 1:30)
+    pbmcsca <- FindNeighbors(pbmcsca, reduction = "mnn", dims = 1:30)
+    pbmcsca <- FindClusters(pbmcsca)
+    DimPlot(pbmcsca, group.by = c("Method", "ident", "CellType"), ncol = 3)
+    ```
+  </Step>
+</Steps>
+
+### Examples
+
+#### Interferon-stimulated and control PBMC
+
+```r
+InstallData("ifnb")
+data("ifnb")
+ifnb <- NormalizeData(ifnb)
+ifnb <- FindVariableFeatures(ifnb)
+ifnb <- RunFastMNN(object.list = SplitObject(ifnb, split.by = "stim"))
+ifnb <- RunUMAP(ifnb, reduction = "mnn", dims = 1:30)
+ifnb <- FindNeighbors(ifnb, reduction = "mnn", dims = 1:30)
+ifnb <- FindClusters(ifnb)
+DimPlot(ifnb, group.by = c("stim", "ident", "seurat_annotations"), ncol = 3)
+```
+
+#### Eight human pancreatic islet datasets
+
+```r
+InstallData("panc8")
+data("panc8")
+panc8 <- NormalizeData(panc8)
+panc8 <- FindVariableFeatures(panc8)
+# Subset to compatible protocols
+panc8 <- RunFastMNN(
+  object.list = SplitObject(panc8, split.by = "replicate")[
+    c("celseq", "celseq2", "fluidigmc1", "smartseq2")
+  ]
+)
+panc8 <- RunUMAP(panc8, reduction = "mnn", dims = 1:30)
+panc8 <- FindNeighbors(panc8, reduction = "mnn", dims = 1:30)
+panc8 <- FindClusters(panc8)
+DimPlot(panc8, group.by = c("replicate", "ident", "celltype"), ncol = 3)
+```
+
+### Parameters
+
+<ParamField path="object.list" type="list" required>
+  A list of two or more Seurat objects to integrate. Each must have variable features computed.
+</ParamField>
+
+<ParamField path="assay" type="character" default="NULL">
+  Assay to use. Defaults to the default assay of the first object in the list.
+</ParamField>
+
+<ParamField path="features" type="integer or character vector" default="2000">
+  Either a numeric value specifying how many variable features to select across all datasets, or an explicit character vector of feature names to use for batch correction.
+</ParamField>
+
+<ParamField path="reduction.name" type="character" default='mnn'>
+  Name under which the corrected MNN embedding is stored in the returned Seurat object.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='mnn_'>
+  Key prefix for the MNN reduction dimensions.
+</ParamField>
+
+<ParamField path="reconstructed.assay" type="character" default='mnn.reconstructed'>
+  Name of the assay containing the low-rank reconstructed expression matrix. Variable features of this assay are set to the integration features.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Whether to print progress messages during feature selection.
+</ParamField>
+
+---
+
+## Seurat v5: FastMNNIntegration
+
+`FastMNNIntegration()` is designed for the Seurat v5 `IntegrateLayers()` framework. It operates on a merged Seurat object with split layers rather than a list of separate objects.
+
+### Workflow
+
+<Steps>
+  <Step title="Preprocess a merged object with split layers">
+    ```r
+    obj <- SeuratData::LoadData("pbmcsca")
+    obj[["RNA"]] <- split(obj[["RNA"]], f = obj$Method)
+    obj <- NormalizeData(obj)
+    obj <- FindVariableFeatures(obj)
+    obj <- ScaleData(obj)
+    obj <- RunPCA(obj)
+    ```
+  </Step>
+
+  <Step title="Integrate layers with FastMNNIntegration">
+    Pass `FastMNNIntegration` as the method argument. The corrected reduction is stored under `new.reduction`.
+
+    ```r
+    obj <- IntegrateLayers(
+      object = obj,
+      method = FastMNNIntegration,
+      new.reduction = 'integrated.mnn',
+      verbose = FALSE
+    )
+    ```
+  </Step>
+
+  <Step title="Pass additional fastMNN parameters">
+    Any extra arguments are forwarded to `batchelor::fastMNN()`. For example, to control the number of mutual nearest neighbors:
+
+    ```r
+    obj <- IntegrateLayers(
+      object = obj,
+      method = FastMNNIntegration,
+      new.reduction = 'integrated.mnn',
+      k = 15,
+      verbose = FALSE
+    )
+    ```
+  </Step>
+</Steps>
+
+### Parameters
+
+<ParamField path="object" type="Seurat" required>
+  A merged Seurat object with split layers (Seurat v5 format).
+</ParamField>
+
+<ParamField path="groups" type="data.frame" default="NULL">
+  A one-column data frame with grouping information identifying which batch each cell belongs to.
+</ParamField>
+
+<ParamField path="layers" type="character vector" default="NULL">
+  Layer names to integrate. Defaults to all `data` layers found in the object.
+</ParamField>
+
+<ParamField path="features" type="integer or character vector" default="2000">
+  Number of variable features to select, or an explicit feature list.
+</ParamField>
+
+<ParamField path="new.reduction" type="character" default='integrated.mnn'>
+  Name under which the corrected embedding is stored.
+</ParamField>
+
+<ParamField path="reduction.key" type="character" default='mnn_'>
+  Key prefix for the MNN reduction dimensions.
+</ParamField>
+
+<ParamField path="reconstructed.assay" type="character" default='mnn.reconstructed'>
+  Name of the assay containing the reconstructed expression matrix.
+</ParamField>
+
+<ParamField path="verbose" type="logical" default="TRUE">
+  Whether to print progress messages.
+</ParamField>
+
+<Note>
+The `FastMNNIntegration` function has `attr(x = FastMNNIntegration, which = 'Seurat.method') <- 'integration'` set, which registers it as a valid integration method for `IntegrateLayers()`.
+</Note>

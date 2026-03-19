@@ -1,0 +1,222 @@
+---
+title: "UCSC Cell Browser Export"
+description: "Export Seurat objects to the UCSC Cell Browser for interactive, web-based single-cell visualization"
+---
+
+The UCSC Cell Browser is a web application for interactive exploration of single-cell datasets, supporting expression queries, dimensionality reduction plots, cluster annotations, and marker gene tables. `ExportToCellbrowser()` converts a Seurat object into the file format expected by Cell Browser, and can optionally build and launch a local Cell Browser instance.
+
+<Note>
+**Source:** [UCSC Cell Browser](https://cellbrowser.readthedocs.io)
+
+**Authors:** Maximilian Haeussler, Nikolay Markov, Brian Raney, and Lucas Seninge
+</Note>
+
+## Installation
+
+Cell Browser is a Python package and must be installed separately from SeuratWrappers:
+
+```bash
+# System-wide
+sudo pip install cellbrowser
+
+# User-local (no root required)
+pip install cellbrowser --user
+```
+
+SeuratWrappers accesses Cell Browser through R's `reticulate` package. Make sure R's reticulate is pointed at the Python environment where `cellbrowser` is installed.
+
+```r
+# Verify reticulate can find the cellbrowser module
+reticulate::py_module_available("cellbrowser")
+```
+
+## Key Functions
+
+- **`ExportToCellbrowser()`** — Exports a Seurat object to a directory of Cell Browser input files. Optionally builds the static website and starts a local web server.
+- **`StopCellbrowser()`** — Stops a running Cell Browser web server launched from R.
+
+## How It Works
+
+`ExportToCellbrowser()` writes the following files to the output directory:
+- `exprMatrix.tsv.gz` (or `matrix.mtx.gz` for large matrices) — expression matrix
+- `<reduction>.coords.tsv` — cell embeddings for each requested reduction
+- `meta.tsv` — cell metadata
+- `markers.tsv` — cluster marker genes (computed or user-supplied)
+- `cellbrowser.conf` — auto-generated Cell Browser configuration file
+
+If `cb.dir` is specified, the function additionally runs `cbBuild` to produce a static HTML/JSON website. If `port` is also set, a local web server is started and the browser is opened automatically.
+
+## ExportToCellbrowser Parameters
+
+<ParamField path="object" type="Seurat object" required>
+  The Seurat object to export.
+</ParamField>
+
+<ParamField path="dir" type="character" required>
+  Output directory for the exported Cell Browser input files. Created if it does not exist.
+</ParamField>
+
+<ParamField path="dataset.name" type="character" default="Project(object)">
+  Name for the dataset in the Cell Browser UI. Defaults to the Seurat project name.
+</ParamField>
+
+<ParamField path="reductions" type="character vector" default="NULL">
+  Names of reductions to export. If `NULL`, all reductions present in the object are exported. Only the first two dimensions of each reduction are used.
+</ParamField>
+
+<ParamField path="markers.file" type="character" default="NULL">
+  Path to a pre-computed marker gene file to include. If `NULL` and `skip.markers = FALSE`, markers are looked up in `object@misc$markers` or computed with `FindAllMarkers`.
+</ParamField>
+
+<ParamField path="markers.n" type="integer" default="100">
+  Number of top markers per cluster to include when computing markers automatically.
+</ParamField>
+
+<ParamField path="matrix.slot" type="character" default='counts'>
+  Which expression matrix to export. Options: `"counts"`, `"data"`, `"scale.data"`.
+</ParamField>
+
+<ParamField path="use.mtx" type="logical" default="FALSE">
+  Export the matrix in `.mtx.gz` format instead of TSV. Automatically enabled for matrices that exceed R's maximum dense matrix size.
+</ParamField>
+
+<ParamField path="cluster.field" type="character" default='Cluster'>
+  Name of the metadata field containing cluster assignments.
+</ParamField>
+
+<ParamField path="cb.dir" type="character" default="NULL">
+  Directory where the Cell Browser static website (HTML/JSON) should be built. Requires `cellbrowser` to be available via reticulate.
+</ParamField>
+
+<ParamField path="port" type="integer" default="NULL">
+  Port on which to start the Cell Browser web server after export. Requires `cb.dir` to be set.
+</ParamField>
+
+<ParamField path="meta.fields" type="character vector" default="NULL">
+  Metadata columns to include. Defaults to all columns.
+</ParamField>
+
+<ParamField path="meta.fields.names" type="character vector" default="NULL">
+  Human-readable display names for the exported metadata fields. Must be the same length as `meta.fields`.
+</ParamField>
+
+<ParamField path="skip.markers" type="logical" default="FALSE">
+  If `TRUE`, skip marker gene export entirely.
+</ParamField>
+
+<ParamField path="skip.expr.matrix" type="logical" default="FALSE">
+  If `TRUE`, skip exporting the expression matrix.
+</ParamField>
+
+<ParamField path="skip.metadata" type="logical" default="FALSE">
+  If `TRUE`, skip exporting cell metadata.
+</ParamField>
+
+<ParamField path="skip.reductions" type="logical" default="FALSE">
+  If `TRUE`, skip exporting dimensionality reduction coordinates.
+</ParamField>
+
+## Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+
+    InstallData("pbmc3k")
+    pbmc3k <- LoadData("pbmc3k", type = "pbmc3k.final")
+    ```
+  </Step>
+
+  <Step title="Export to Cell Browser">
+    Export the object, build the static website, and launch a local server:
+
+    ```r
+    ExportToCellbrowser(
+      pbmc3k,
+      dir = "out",
+      cb.dir = "cb_out",
+      port = 8080,
+      reductions = "umap"
+    )
+    ```
+
+    This writes all input files to `out/`, builds the static website in `cb_out/`, and opens the Cell Browser at `http://localhost:8080` in your default browser.
+  </Step>
+
+  <Step title="Stop the server when done">
+    ```r
+    StopCellbrowser()
+    ```
+  </Step>
+</Steps>
+
+## Export Without Launching a Server
+
+To export files only without building the website or starting a server:
+
+```r
+ExportToCellbrowser(
+  pbmc3k,
+  dir = "out",
+  dataset.name = "PBMC 3k"
+)
+```
+
+The exported directory can then be built manually with the `cbBuild` command-line tool and copied to any web server.
+
+## Supplying Pre-Computed Markers
+
+If you have already run `FindAllMarkers`, you can save the results and pass them in:
+
+```r
+markers <- FindAllMarkers(pbmc3k, only.pos = TRUE, logfc.threshold = 0.25)
+write.table(markers, file = "markers.tsv", sep = "\t", quote = FALSE)
+
+ExportToCellbrowser(
+  pbmc3k,
+  dir = "out",
+  markers.file = "markers.tsv",
+  dataset.name = "PBMC"
+)
+```
+
+Alternatively, store markers in the object before exporting and they will be picked up automatically:
+
+```r
+pbmc3k@misc$markers <- FindAllMarkers(pbmc3k)
+ExportToCellbrowser(pbmc3k, dir = "out", dataset.name = "PBMC")
+```
+
+## Selecting Metadata Fields
+
+Control which metadata columns appear in the Cell Browser UI:
+
+```r
+ExportToCellbrowser(
+  pbmc3k,
+  dir = "out",
+  dataset.name = "PBMC",
+  meta.fields = c("seurat_clusters", "seurat_annotations", "percent.mt"),
+  meta.fields.names = c("Cluster", "Cell Type", "% Mitochondrial")
+)
+```
+
+## Python Environment Configuration
+
+If reticulate cannot find the `cellbrowser` module, configure the Python environment explicitly before calling `ExportToCellbrowser`:
+
+```r
+library(reticulate)
+
+# Point to a specific Python executable
+use_python("/usr/local/bin/python3")
+
+# Or activate a virtual environment
+use_virtualenv("~/venvs/cellbrowser")
+
+# Or use a conda environment
+use_condaenv("cellbrowser")
+```

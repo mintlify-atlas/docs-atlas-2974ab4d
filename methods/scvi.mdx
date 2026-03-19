@@ -1,0 +1,154 @@
+---
+title: "scVI Integration"
+description: "Deep generative model for single-cell RNA-seq integration using a variational autoencoder via scvi-tools."
+---
+
+scVI (single-cell Variational Inference) uses a variational autoencoder to learn a low-dimensional probabilistic latent representation of single-cell data that accounts for batch effects. SeuratWrappers provides `scVIIntegration()`, which integrates with Seurat v5's `IntegrateLayers()` framework and calls into the Python `scvi-tools` library via `reticulate`.
+
+<Warning>
+scVI requires a working Python environment with `scvi-tools` installed. You must set up a conda environment with `scvi-tools` before running this integration. R calls into Python at runtime using `reticulate`.
+</Warning>
+
+## Installation
+
+<Steps>
+  <Step title="Install scvi-tools in a conda environment">
+    ```bash
+    conda create -n scvi-env python=3.9
+    conda activate scvi-env
+    pip install scvi-tools
+    ```
+  </Step>
+
+  <Step title="Install R dependencies">
+    ```r
+    install.packages('reticulate')
+    remotes::install_github('satijalab/seurat-wrappers')
+    ```
+  </Step>
+</Steps>
+
+## Workflow
+
+<Steps>
+  <Step title="Load libraries and data">
+    ```r
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratWrappers)
+    library(reticulate)
+
+    obj <- SeuratData::LoadData("pbmcsca")
+    ```
+  </Step>
+
+  <Step title="Split layers and preprocess">
+    Split the RNA assay by batch variable to create per-batch layers, then run standard preprocessing.
+
+    ```r
+    obj[["RNA"]] <- split(obj[["RNA"]], f = obj$Method)
+    obj <- NormalizeData(obj)
+    obj <- FindVariableFeatures(obj)
+    obj <- ScaleData(obj)
+    obj <- RunPCA(obj)
+    ```
+  </Step>
+
+  <Step title="Integrate layers with scVIIntegration">
+    Specify the path to your conda environment containing `scvi-tools`. The integrated latent space is stored under `new.reduction`.
+
+    ```r
+    obj <- IntegrateLayers(
+      object = obj,
+      method = scVIIntegration,
+      new.reduction = "integrated.scvi",
+      conda_env = "../miniconda3/envs/scvi-env",
+      verbose = FALSE
+    )
+    ```
+  </Step>
+
+  <Step title="Downstream analysis">
+    Use the scVI latent space for UMAP, neighbor graph construction, and clustering.
+
+    ```r
+    obj <- FindNeighbors(obj, reduction = "integrated.scvi", dims = 1:30)
+    obj <- FindClusters(obj)
+    obj <- RunUMAP(obj, reduction = "integrated.scvi", dims = 1:30)
+    DimPlot(obj, group.by = c("Method", "ident"), ncol = 2)
+    ```
+  </Step>
+</Steps>
+
+## SCTransform Integration
+
+scVI also supports SCTransformed data. Run `SCTransform()` instead of `NormalizeData()` and specify the `SCT` assay:
+
+```r
+obj <- SCTransform(object = obj)
+obj <- IntegrateLayers(
+  object = obj,
+  method = scVIIntegration,
+  orig.reduction = "pca",
+  new.reduction = "integrated.scvi",
+  assay = "SCT",
+  conda_env = "../miniconda3/envs/scvi-env",
+  verbose = FALSE
+)
+```
+
+## Parameters
+
+<ParamField path="object" type="StdAssay or SCTAssay" required>
+  A merged Seurat v5 assay object containing the data to integrate. Passed internally by `IntegrateLayers()`.
+</ParamField>
+
+<ParamField path="features" type="character vector" default="NULL">
+  Features (genes) to include in the scVI model. If `NULL`, all variable features are used.
+</ParamField>
+
+<ParamField path="layers" type="character" default='counts'>
+  Layer(s) containing raw counts. scVI requires raw (unnormalized) count data. For standard Seurat workflows, this is `"counts"`.
+</ParamField>
+
+<ParamField path="conda_env" type="character" default="NULL">
+  Path to the conda environment containing `scvi-tools`. Passed to `reticulate::use_condaenv()`. Required for the function to locate the Python packages.
+</ParamField>
+
+<ParamField path="new.reduction" type="character" default='integrated.dr'>
+  Name under which the scVI latent space is stored as a `DimReduc` object in the Seurat object.
+</ParamField>
+
+<ParamField path="ndims" type="integer" default="30">
+  Dimensionality of the scVI latent space (`n_latent` in scvi-tools). Controls the number of latent variables in the variational autoencoder.
+</ParamField>
+
+<ParamField path="nlayers" type="integer" default="2">
+  Number of hidden layers in the encoder and decoder neural networks (`n_layers` in scvi-tools).
+</ParamField>
+
+<ParamField path="gene_likelihood" type="character" default='nb'>
+  Distribution used to model gene expression counts. Options:
+  - `"nb"` — negative binomial (default, recommended for most scRNA-seq data)
+  - `"zinb"` — zero-inflated negative binomial
+  - `"poisson"` — Poisson
+</ParamField>
+
+<ParamField path="max_epochs" type="integer" default="NULL">
+  Maximum number of training epochs. When `NULL`, scvi-tools uses its default heuristic based on dataset size.
+</ParamField>
+
+## How It Works
+
+Internally, `scVIIntegration()` performs the following steps:
+
+1. Identifies batch membership for each cell from the split layer structure (or SCT model identifiers for SCTransformed data)
+2. Joins count layers into a single matrix and constructs an `AnnData` object in Python via `reticulate`
+3. Calls `scvi.model.SCVI.setup_anndata()` with `batch_key = "batch"` to register batch labels
+4. Initializes an `SCVI` model and trains it for `max_epochs` epochs
+5. Extracts the latent representation with `model.get_latent_representation()`
+6. Returns a named list containing a `DimReduc` object for use by `IntegrateLayers()`
+
+<Note>
+The `scVIIntegration` function has `attr(x = scVIIntegration, which = 'Seurat.method') <- 'integration'` set, which registers it as a valid integration method for `IntegrateLayers()`.
+</Note>
