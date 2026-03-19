@@ -1,0 +1,136 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "SeuratWrappers",
+  "projectDescription": "A collection of community-provided methods and extensions for Seurat, enabling single-cell RNA-seq analysis workflows with tools like Monocle3, LIGER, Harmony, scVelo, and more.",
+  "theme": "mint",
+  "primaryColor": "#89729a",
+  "lightColor": "#31282d",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "installation"]
+          },
+          {
+            "group": "Integration Methods",
+            "pages": [
+              "methods/harmony",
+              "methods/liger",
+              "methods/conos",
+              "methods/fast-mnn",
+              "methods/scvi"
+            ]
+          },
+          {
+            "group": "Trajectory Analysis",
+            "pages": [
+              "methods/monocle3",
+              "methods/velocity",
+              "methods/tricycle"
+            ]
+          },
+          {
+            "group": "Dimensionality Reduction",
+            "pages": [
+              "methods/alra",
+              "methods/glmpca",
+              "methods/pacmap"
+            ]
+          },
+          {
+            "group": "Spatial & Visualization",
+            "pages": [
+              "methods/banksy",
+              "methods/nebulosa",
+              "methods/schex"
+            ]
+          },
+          {
+            "group": "Quality Control & Utilities",
+            "pages": [
+              "methods/miqc",
+              "methods/cogaps",
+              "methods/cipr",
+              "methods/presto",
+              "methods/alevin",
+              "methods/cellbrowser"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Functions",
+            "pages": [
+              "api/run-alra",
+              "api/run-banksy",
+              "api/run-cogaps",
+              "api/run-fast-mnn",
+              "api/run-glmpca",
+              "api/run-miqc",
+              "api/run-optimize-als",
+              "api/run-pacmap",
+              "api/run-presto",
+              "api/run-velocity",
+              "api/run-tricycle"
+            ]
+          },
+          {
+            "group": "Conversion & IO",
+            "pages": [
+              "api/as-cell-data-set",
+              "api/read-alevin",
+              "api/read-velocity",
+              "api/export-to-cellbrowser"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Dataset integration across multiple single-cell methods (Harmony, LIGER, Conos, fastMNN)",
+    "Trajectory analysis with Monocle3 and RNA velocity",
+    "Imputation via ALRA (Adaptively-thresholded Low Rank Approximation)",
+    "Spatial transcriptomics support with BANKSY",
+    "Dimensionality reduction with GLM-PCA and PaCMAP",
+    "Cell type annotation using CIPR",
+    "Quality control with miQC",
+    "Fast differential expression with Presto",
+    "Cell cycle position estimation with tricycle",
+    "Seamless Seurat object compatibility"
+  ],
+  "publicApiSurface": [
+    "RunALRA()",
+    "RunBanksy()",
+    "RunCoGAPS()",
+    "RunFastMNN()",
+    "FastMNNIntegration()",
+    "RunGLMPCA()",
+    "RunMiQC()",
+    "PlotMiQC()",
+    "RunOptimizeALS()",
+    "RunQuantileAlignSNF()",
+    "RunQuantileNorm()",
+    "RunSNF()",
+    "RunPaCMAP()",
+    "RunPresto()",
+    "RunPrestoAll()",
+    "RunVelocity()",
+    "Runtricycle()",
+    "ReadAlevin()",
+    "ReadVelocity()",
+    "ExportToCellbrowser()",
+    "StopCellbrowser()",
+    "ALRAChooseKPlot()",
+    "scVIIntegration()",
+    "as.cell_data_set()",
+    "as.Seurat.cell_data_set()"
+  ]
+}
